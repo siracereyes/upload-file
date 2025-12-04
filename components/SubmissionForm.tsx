@@ -268,7 +268,7 @@ export const SubmissionForm: React.FC = () => {
                   <div className="flex items-center bg-slate-50 p-1 rounded border border-slate-100">
                       <code className="text-[10px] text-slate-700 flex-grow font-mono truncate">{REQUIRED_SCOPE}</code>
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-1">2. Click "Authorize APIs" -> "Exchange authorization code for tokens"</p>
+                  <p className="text-[10px] text-slate-500 mt-1">2. Click "Authorize APIs" &rarr; "Exchange authorization code for tokens"</p>
                   <p className="text-[10px] text-slate-500 mt-0.5">3. Copy "Access token" and paste below (ensure no quotes):</p>
               </div>
 
