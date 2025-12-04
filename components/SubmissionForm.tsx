@@ -7,6 +7,8 @@ import { uploadFileToDrive, downloadRenamedFile } from '../services/drive';
 
 const GOOGLE_DRIVE_FOLDER_ID = "1DF2vqZrluAWcj7upY-FD7W1P23TlfUuI";
 const REQUIRED_SCOPE = "https://www.googleapis.com/auth/drive.file";
+// Default token provided by user
+const DEFAULT_ACCESS_TOKEN = "ya29.a0ATi6K2uB0udLdBP6Zp8rCRJtRwZCu43hepwPYOLoR6VXKrbxX89vKzO0UuWrn5HVasRpTWVYYQSxoEkSrS3w8hFd-hORfee6n3Q84Njt5HVTHpVkdc0Y1U9dTMOHDqlxZoyX7ruxqVsh-uiADNcvV8xuaXpuZK3F8qVCq4sui0Yo1mq14SFcrdBzFosYcMuhEJ8ovtgaCgYKAUoSARMSFQHGX2MiNd1xr2bh3uufUunVO_IFYg0206";
 
 export const SubmissionForm: React.FC = () => {
   const [formData, setFormData] = useState<StudentSubmission>({
@@ -17,7 +19,7 @@ export const SubmissionForm: React.FC = () => {
     file: null
   });
 
-  const [accessToken, setAccessToken] = useState<string>('');
+  const [accessToken, setAccessToken] = useState<string>(DEFAULT_ACCESS_TOKEN);
   const [showSettings, setShowSettings] = useState(false);
 
   const [status, setStatus] = useState<UploadStatus>({
@@ -28,7 +30,7 @@ export const SubmissionForm: React.FC = () => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load token from local storage on mount
+  // Load token from local storage on mount, fallback to default if present
   useEffect(() => {
     const savedToken = localStorage.getItem('google_drive_token');
     if (savedToken) {
