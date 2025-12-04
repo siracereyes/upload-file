@@ -37,9 +37,12 @@ export const SubmissionForm: React.FC = () => {
   }, []);
 
   const handleTokenChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newToken = e.target.value;
-    setAccessToken(newToken);
-    localStorage.setItem('google_drive_token', newToken);
+    // Sanitize input: Remove whitespace and surrounding quotes that might be pasted by accident
+    const rawValue = e.target.value;
+    const cleanToken = rawValue.trim().replace(/^["']|["']$/g, '');
+    
+    setAccessToken(cleanToken);
+    localStorage.setItem('google_drive_token', cleanToken);
   };
 
   const clearToken = () => {
@@ -145,10 +148,10 @@ export const SubmissionForm: React.FC = () => {
         console.error("Upload error", error);
         
         // Check if error is auth related
-        if (error.message.includes('401') || error.message.includes('403')) {
+        if (error.message.includes('401') || error.message.includes('403') || error.message.includes('invalid authentication credentials')) {
            setStatus({
               state: 'error',
-              message: 'Access Token expired or invalid. Please refresh token in Settings.'
+              message: 'Access Token expired or invalid. Please check for extra spaces or quotes in Settings.'
            });
         } else {
            // Fallback to download on other errors
@@ -266,7 +269,7 @@ export const SubmissionForm: React.FC = () => {
                       <code className="text-[10px] text-slate-700 flex-grow font-mono truncate">{REQUIRED_SCOPE}</code>
                   </div>
                   <p className="text-[10px] text-slate-500 mt-1">2. Click "Authorize APIs" -> "Exchange authorization code for tokens"</p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">3. Copy "Access token" and paste below:</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">3. Copy "Access token" and paste below (ensure no quotes):</p>
               </div>
 
               <div className="flex space-x-2">
