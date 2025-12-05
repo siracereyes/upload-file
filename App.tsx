@@ -30,10 +30,7 @@ function App() {
       <footer className="bg-white border-t border-gray-200 py-6">
         <div className="max-w-4xl mx-auto px-4 text-center">
           <p className="text-sm text-gray-500">
-            © {new Date().getFullYear()} School Department of Technology and Livelihood Education
-          </p>
-          <p className="text-xs text-gray-400 mt-1">
-            Secure submission to Drive Folder: <span className="font-mono">1DF2vqZrluAWcj7upY-FD7W1P23TlfUuI</span>
+            © {new Date().getFullYear()} CJMR Technology
           </p>
         </div>
       </footer>
