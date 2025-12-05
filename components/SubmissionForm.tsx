@@ -6,6 +6,8 @@ import { uploadFileToDrive, uploadFileToScript, downloadRenamedFile } from '../s
 
 const GOOGLE_DRIVE_FOLDER_ID = "1DF2vqZrluAWcj7upY-FD7W1P23TlfUuI";
 const REQUIRED_SCOPE = "https://www.googleapis.com/auth/drive.file";
+// Embedded default script URL provided by user
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx4hkTeCOkBhfCDksFY4TOjQtoC5gwqNfp66uk4wTnSyadsl6_pbBkFWyp_coQBebuQ/exec";
 
 export const SubmissionForm: React.FC = () => {
   const [formData, setFormData] = useState<StudentSubmission>({
@@ -17,9 +19,11 @@ export const SubmissionForm: React.FC = () => {
   });
 
   // Settings State
+  // Initialize with the default embedded URL
   const [accessToken, setAccessToken] = useState<string>("");
-  const [scriptUrl, setScriptUrl] = useState<string>("");
+  const [scriptUrl, setScriptUrl] = useState<string>(DEFAULT_SCRIPT_URL);
   const [showSettings, setShowSettings] = useState(false);
+  // Default to permanent tab since we have a valid URL
   const [activeTab, setActiveTab] = useState<'permanent' | 'temporary'>('permanent');
 
   const [status, setStatus] = useState<UploadStatus>({
@@ -30,7 +34,7 @@ export const SubmissionForm: React.FC = () => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load configs from local storage
+  // Load configs from local storage (allow overrides if user changed it)
   useEffect(() => {
     const savedToken = localStorage.getItem('google_drive_token');
     if (savedToken) setAccessToken(savedToken);
@@ -38,11 +42,8 @@ export const SubmissionForm: React.FC = () => {
     const savedScriptUrl = localStorage.getItem('google_script_url');
     if (savedScriptUrl) {
         setScriptUrl(savedScriptUrl);
-        // If we have a script URL, default to that tab/mode
-        setActiveTab('permanent');
-    } else if (savedToken) {
-        setActiveTab('temporary');
-    }
+    } 
+    // If no saved script URL, we keep the DEFAULT_SCRIPT_URL initialized in state.
   }, []);
 
   const handleTokenChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -66,6 +67,11 @@ export const SubmissionForm: React.FC = () => {
   const clearScriptUrl = () => {
     setScriptUrl('');
     localStorage.removeItem('google_script_url');
+  };
+
+  const restoreDefaultScript = () => {
+    setScriptUrl(DEFAULT_SCRIPT_URL);
+    localStorage.removeItem('google_script_url'); // clear override
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -110,6 +116,7 @@ export const SubmissionForm: React.FC = () => {
     }
 
     const renamedFile = generateRenamedFilename();
+    // Prioritize Script URL if available (default), otherwise Token
     const canUpload = !!(scriptUrl || accessToken);
     
     setStatus({ 
@@ -177,7 +184,7 @@ export const SubmissionForm: React.FC = () => {
     setStatus({ state: 'idle', message: '' });
   };
 
-  // The Google Apps Script code to display to the user
+  // The Google Apps Script code to display to the user (optional now, since it's embedded)
   const GAS_CODE = `function doPost(e) {
   // 1. Set your Folder ID here
   var folderId = "${GOOGLE_DRIVE_FOLDER_ID}";
@@ -293,13 +300,22 @@ export const SubmissionForm: React.FC = () => {
               {activeTab === 'permanent' ? (
                  <div className="p-4 bg-white">
                     <p className="text-xs text-slate-600 mb-3">
-                        <strong>Recommended:</strong> This method works forever (no 1-hour expiry). Ideal for student submissions.
+                        <strong>Status:</strong> {scriptUrl === DEFAULT_SCRIPT_URL ? <span className="text-green-600 font-bold">System Default Link Active</span> : "Custom Link Active"}
                     </p>
+                    
+                    {scriptUrl !== DEFAULT_SCRIPT_URL && (
+                       <div className="bg-amber-50 p-2 mb-3 rounded border border-amber-200 text-xs text-amber-800 flex justify-between items-center">
+                           <span>You are using a custom script URL.</span>
+                           <button onClick={restoreDefaultScript} className="text-amber-700 underline font-semibold">Restore Default</button>
+                       </div>
+                    )}
+                    
                     <div className="bg-slate-100 p-3 rounded border border-slate-200 text-[10px] space-y-2 mb-3">
-                        <p>1. Go to <a href="https://script.google.com" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">script.google.com</a> & click "New Project"</p>
-                        <p>2. Paste this code into the editor (replace everything):</p>
-                        <div className="relative group">
-                            <pre className="bg-slate-800 text-slate-100 p-2 rounded overflow-x-auto font-mono text-[9px] h-24">{GAS_CODE}</pre>
+                        <p className="font-semibold text-slate-700">How this works:</p>
+                        <p>We use a secure Google Apps Script proxy to upload files without needing frequent login tokens.</p>
+                        <p>The code below is what runs on the backend to handle your file:</p>
+                        <div className="relative group mt-2">
+                            <pre className="bg-slate-800 text-slate-100 p-2 rounded overflow-x-auto font-mono text-[9px] h-20 opacity-75">{GAS_CODE}</pre>
                             <button 
                                 onClick={() => navigator.clipboard.writeText(GAS_CODE)}
                                 className="absolute top-1 right-1 bg-white/10 hover:bg-white/20 text-white p-1 rounded"
@@ -308,14 +324,6 @@ export const SubmissionForm: React.FC = () => {
                                 <Copy size={12} />
                             </button>
                         </div>
-                        <p>3. Click <strong>Deploy</strong> &rarr; <strong>New Deployment</strong>.</p>
-                        <p>4. Select type: <strong>Web App</strong>.</p>
-                        <p>5. Configuration (Crucial!):</p>
-                        <ul className="list-disc pl-4 text-slate-700">
-                            <li>Execute as: <strong>Me</strong></li>
-                            <li>Who has access: <strong>Anyone</strong></li>
-                        </ul>
-                        <p>6. Click Deploy, Copy the <strong>Web App URL</strong>, and paste it below:</p>
                     </div>
                     <div className="flex space-x-2">
                         <input 
@@ -323,9 +331,9 @@ export const SubmissionForm: React.FC = () => {
                             value={scriptUrl}
                             onChange={handleScriptUrlChange}
                             placeholder="Paste Web App URL (https://script.google.com/...)"
-                            className="flex-grow text-sm p-2 border border-slate-300 rounded focus:ring-2 focus:ring-teal-500 outline-none"
+                            className="flex-grow text-sm p-2 border border-slate-300 rounded focus:ring-2 focus:ring-teal-500 outline-none text-slate-500"
                         />
-                        {scriptUrl && (
+                        {scriptUrl && scriptUrl !== DEFAULT_SCRIPT_URL && (
                             <button onClick={clearScriptUrl} className="px-3 py-2 bg-red-100 text-red-600 rounded hover:bg-red-200" title="Clear URL">
                                 <Trash2 size={16} />
                             </button>
@@ -340,10 +348,10 @@ export const SubmissionForm: React.FC = () => {
                     <div className="bg-slate-100 p-3 rounded border border-slate-200 mb-3">
                         <p className="text-[10px] text-slate-500 mb-1">1. In <a href="https://developers.google.com/oauthplayground" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">OAuth Playground</a>, use Scope:</p>
                         <div className="flex items-center bg-white p-1 rounded border border-slate-200">
-                            <code className="text-[10px] text-slate-700 font-mono select-all">{REQUIRED_SCOPE}</code>
+                            <code className="text-[10px] text-slate-700 flex-grow font-mono truncate">{REQUIRED_SCOPE}</code>
                         </div>
-                        <p className="text-[10px] text-slate-500 mt-2">2. Click "Authorize APIs" &rarr; "Exchange authorization code"</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">3. Copy "Access token" (starts with ya29...) and paste below:</p>
+                        <p className="text-[10px] text-slate-500 mt-1">2. Click "Authorize APIs" &rarr; "Exchange authorization code for tokens"</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">3. Copy "Access token" and paste below (ensure no quotes):</p>
                     </div>
                     <div className="flex space-x-2">
                         <input 
