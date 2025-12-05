@@ -1,13 +1,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, FileVideo, CheckCircle, Loader2, AlertCircle, PlayCircle, X, Download, Settings, ExternalLink, Copy, Trash2 } from 'lucide-react';
+import { Upload, FileVideo, CheckCircle, Loader2, AlertCircle, PlayCircle, X, Download, Settings, ExternalLink, Copy, Trash2, Link as LinkIcon, Clock } from 'lucide-react';
 import { AssignmentType, StudentSubmission, UploadStatus } from '../types';
-import { uploadFileToDrive, downloadRenamedFile } from '../services/drive';
+import { uploadFileToDrive, uploadFileToScript, downloadRenamedFile } from '../services/drive';
 
 const GOOGLE_DRIVE_FOLDER_ID = "1DF2vqZrluAWcj7upY-FD7W1P23TlfUuI";
 const REQUIRED_SCOPE = "https://www.googleapis.com/auth/drive.file";
-// Default token provided by user
-const DEFAULT_ACCESS_TOKEN = "ya29.a0ATi6K2uB0udLdBP6Zp8rCRJtRwZCu43hepwPYOLoR6VXKrbxX89vKzO0UuWrn5HVasRpTWVYYQSxoEkSrS3w8hFd-hORfee6n3Q84Njt5HVTHpVkdc0Y1U9dTMOHDqlxZoyX7ruxqVsh-uiADNcvV8xuaXpuZK3F8qVCq4sui0Yo1mq14SFcrdBzFosYcMuhEJ8ovtgaCgYKAUoSARMSFQHGX2MiNd1xr2bh3uufUunVO_IFYg0206";
 
 export const SubmissionForm: React.FC = () => {
   const [formData, setFormData] = useState<StudentSubmission>({
@@ -18,8 +16,11 @@ export const SubmissionForm: React.FC = () => {
     file: null
   });
 
-  const [accessToken, setAccessToken] = useState<string>(DEFAULT_ACCESS_TOKEN);
+  // Settings State
+  const [accessToken, setAccessToken] = useState<string>("");
+  const [scriptUrl, setScriptUrl] = useState<string>("");
   const [showSettings, setShowSettings] = useState(false);
+  const [activeTab, setActiveTab] = useState<'permanent' | 'temporary'>('permanent');
 
   const [status, setStatus] = useState<UploadStatus>({
     state: 'idle',
@@ -29,26 +30,42 @@ export const SubmissionForm: React.FC = () => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load token from local storage on mount, fallback to default if present
+  // Load configs from local storage
   useEffect(() => {
     const savedToken = localStorage.getItem('google_drive_token');
-    if (savedToken) {
-      setAccessToken(savedToken);
+    if (savedToken) setAccessToken(savedToken);
+
+    const savedScriptUrl = localStorage.getItem('google_script_url');
+    if (savedScriptUrl) {
+        setScriptUrl(savedScriptUrl);
+        // If we have a script URL, default to that tab/mode
+        setActiveTab('permanent');
+    } else if (savedToken) {
+        setActiveTab('temporary');
     }
   }, []);
 
   const handleTokenChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Sanitize input: Remove whitespace and surrounding quotes that might be pasted by accident
     const rawValue = e.target.value;
     const cleanToken = rawValue.trim().replace(/^["']|["']$/g, '');
-    
     setAccessToken(cleanToken);
     localStorage.setItem('google_drive_token', cleanToken);
+  };
+
+  const handleScriptUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.trim();
+    setScriptUrl(val);
+    localStorage.setItem('google_script_url', val);
   };
 
   const clearToken = () => {
     setAccessToken('');
     localStorage.removeItem('google_drive_token');
+  };
+
+  const clearScriptUrl = () => {
+    setScriptUrl('');
+    localStorage.removeItem('google_script_url');
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -59,12 +76,10 @@ export const SubmissionForm: React.FC = () => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      // Basic validation
       if (!file.type.startsWith('video/')) {
         setStatus({ state: 'error', message: 'Please upload a valid video file (MP4, WebM, etc.).' });
         return;
       }
-      
       setFormData(prev => ({ ...prev, file }));
       setPreviewUrl(URL.createObjectURL(file));
       setStatus({ state: 'idle', message: '' });
@@ -80,14 +95,10 @@ export const SubmissionForm: React.FC = () => {
   };
 
   const generateRenamedFilename = () => {
-    // Format: "Video Upload_Section_First Name_Last Name"
-    // Using AssignmentType as "Video Upload" value
     const ext = formData.file?.name.split('.').pop() || 'mp4';
     const safeFirst = formData.firstName.trim();
     const safeLast = formData.lastName.trim();
     const safeSection = formData.section.trim();
-    
-    // Ensure filename is clean for file systems
     return `${formData.assignmentType}_${safeSection}_${safeFirst}_${safeLast}.${ext}`.replace(/[\\/:"*?<>|]/g, '');
   };
 
@@ -99,18 +110,26 @@ export const SubmissionForm: React.FC = () => {
     }
 
     const renamedFile = generateRenamedFilename();
+    const canUpload = !!(scriptUrl || accessToken);
     
-    // Step 1: Upload or Download (Skipping AI Analysis)
     setStatus({ 
       state: 'uploading', 
-      message: accessToken 
-        ? `Uploading "${renamedFile}" to Drive...` 
+      message: canUpload 
+        ? `Uploading "${renamedFile}"...` 
         : `Preparing "${renamedFile}" for submission...`
     });
 
     try {
-        if (accessToken) {
-            // Attempt Real API Upload if token exists
+        if (scriptUrl) {
+            // Mode A: Permanent Script
+            await uploadFileToScript(formData.file, renamedFile, scriptUrl);
+            setStatus({
+                state: 'success',
+                message: 'Submission successful! File uploaded via Secure Link.',
+                renamedFileName: renamedFile
+            });
+        } else if (accessToken) {
+            // Mode B: Temporary Token
             await uploadFileToDrive(formData.file, renamedFile, GOOGLE_DRIVE_FOLDER_ID, accessToken);
             setStatus({
                 state: 'success',
@@ -118,8 +137,8 @@ export const SubmissionForm: React.FC = () => {
                 renamedFileName: renamedFile
             });
         } else {
-            // Fallback: Simulate processing time then Trigger Download
-            await new Promise(resolve => setTimeout(resolve, 800)); // Reduced delay
+            // Fallback: Download
+            await new Promise(resolve => setTimeout(resolve, 800));
             downloadRenamedFile(formData.file, renamedFile);
             setStatus({
                 state: 'success',
@@ -130,21 +149,19 @@ export const SubmissionForm: React.FC = () => {
     } catch (error: any) {
         console.error("Upload error", error);
         
-        // Check if error is auth related
-        if (error.message.includes('401') || error.message.includes('403') || error.message.includes('invalid authentication credentials')) {
-           setStatus({
-              state: 'error',
-              message: 'Access Token expired or invalid. Please check for extra spaces or quotes in Settings.'
-           });
-        } else {
-           // Fallback to download on other errors
-           downloadRenamedFile(formData.file, renamedFile);
-           setStatus({
-               state: 'success',
-               message: `Auto-upload failed (${error.message}). File downloaded instead.`,
-               renamedFileName: renamedFile
-           });
+        // Fallback on error
+        downloadRenamedFile(formData.file, renamedFile);
+        
+        let userMessage = `Auto-upload failed. File downloaded for manual submission.`;
+        if (error.message.includes('401') || error.message.includes('403') || error.message.includes('invalid authentication')) {
+           userMessage = 'Authentication expired. File downloaded for manual upload.';
         }
+
+        setStatus({
+            state: 'success', 
+            message: userMessage,
+            renamedFileName: renamedFile
+        });
     }
   };
 
@@ -160,6 +177,31 @@ export const SubmissionForm: React.FC = () => {
     setStatus({ state: 'idle', message: '' });
   };
 
+  // The Google Apps Script code to display to the user
+  const GAS_CODE = `function doPost(e) {
+  // 1. Set your Folder ID here
+  var folderId = "${GOOGLE_DRIVE_FOLDER_ID}";
+  
+  try {
+    var folder = DriveApp.getFolderById(folderId);
+    var data = JSON.parse(e.postData.contents);
+    var blob = Utilities.newBlob(Utilities.base64Decode(data.bytes), data.mimeType, data.filename);
+    var file = folder.createFile(blob);
+    
+    return ContentService.createTextOutput(JSON.stringify({ 
+      status: "success", 
+      id: file.getId(), 
+      url: file.getUrl() 
+    })).setMimeType(ContentService.MimeType.JSON);
+    
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ 
+      status: "error", 
+      message: err.toString() 
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+
   if (status.state === 'success') {
     return (
       <div className="bg-white rounded-2xl shadow-xl p-8 max-w-2xl w-full mx-auto animate-fade-in">
@@ -168,20 +210,20 @@ export const SubmissionForm: React.FC = () => {
             <CheckCircle size={32} />
           </div>
           <h2 className="text-2xl font-bold text-gray-800">
-             {accessToken ? "Submission Complete" : "File Ready for Submission"}
+             {status.message.includes("Submission successful") ? "Submission Complete" : "File Ready for Submission"}
           </h2>
           
           <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg text-left text-sm text-amber-800 w-full flex items-start">
              <AlertCircle size={16} className="mt-0.5 mr-2 flex-shrink-0" />
              <div>
-                {!accessToken ? (
+                {!status.message.includes("Submission successful") ? (
                     <>
-                        <p className="font-bold">Important Step Required:</p>
-                        <p className="mt-1">Since we don't have direct access to the teacher's drive, your file has been <strong>renamed and downloaded to your device</strong>.</p>
-                        <p className="mt-2">Please drag and drop <strong>{status.renamedFileName}</strong> into the Google Drive folder.</p>
+                        <p className="font-bold">Action Required:</p>
+                        <p className="mt-1">{status.message}</p>
+                        <p className="mt-2">Please drag and drop <strong>{status.renamedFileName}</strong> into the Google Drive folder manually.</p>
                     </>
                 ) : (
-                    <p>File successfully uploaded to the specified Google Drive folder.</p>
+                    <p>File successfully uploaded to the teacher's folder.</p>
                 )}
              </div>
           </div>
@@ -211,16 +253,18 @@ export const SubmissionForm: React.FC = () => {
     );
   }
 
+  const hasConfig = !!(scriptUrl || accessToken);
+
   return (
     <div className="bg-white rounded-2xl shadow-xl overflow-hidden max-w-2xl w-full mx-auto relative">
       <div className="absolute top-4 right-4 z-10">
         <button 
             onClick={() => setShowSettings(!showSettings)}
-            className={`p-2 transition-colors rounded-full ${accessToken ? 'text-white bg-teal-500/20 hover:bg-teal-500/30' : 'text-teal-100 hover:text-white'}`}
-            title="Configuration"
+            className={`p-2 transition-colors rounded-full ${hasConfig ? 'text-white bg-teal-500/20 hover:bg-teal-500/30' : 'bg-red-500 text-white shadow-lg animate-bounce'}`}
+            title="Configure Upload Settings"
         >
             <Settings size={18} />
-            {accessToken && <span className="absolute top-2 right-2 w-2 h-2 bg-green-400 rounded-full border-2 border-teal-600"></span>}
+            {hasConfig && <span className="absolute top-2 right-2 w-2 h-2 bg-green-400 rounded-full border-2 border-teal-600"></span>}
         </button>
       </div>
 
@@ -230,38 +274,93 @@ export const SubmissionForm: React.FC = () => {
       </div>
 
       {showSettings && (
-          <div className="bg-slate-100 p-4 border-b border-slate-200 animate-in slide-in-from-top-2">
-              <div className="flex justify-between items-center mb-2">
-                  <label className="text-xs font-bold text-slate-600 uppercase">Developer Settings (Access Token)</label>
-                  <a href="https://developers.google.com/oauthplayground" target="_blank" rel="noreferrer" className="flex items-center text-[10px] text-blue-600 hover:underline">
-                      Open OAuth Playground <ExternalLink size={10} className="ml-1"/>
-                  </a>
-              </div>
-              
-              <div className="bg-white p-2 rounded border border-slate-200 mb-3">
-                  <p className="text-[10px] text-slate-500 mb-1">1. In OAuth Playground, input this Scope:</p>
-                  <div className="flex items-center bg-slate-50 p-1 rounded border border-slate-100">
-                      <code className="text-[10px] text-slate-700 flex-grow font-mono truncate">{REQUIRED_SCOPE}</code>
-                  </div>
-                  <p className="text-[10px] text-slate-500 mt-1">2. Click "Authorize APIs" &rarr; "Exchange authorization code for tokens"</p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">3. Copy "Access token" and paste below (ensure no quotes):</p>
+          <div className="bg-slate-50 border-b border-slate-200 animate-in slide-in-from-top-2">
+              <div className="flex border-b border-slate-200">
+                  <button 
+                    onClick={() => setActiveTab('permanent')}
+                    className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide ${activeTab === 'permanent' ? 'bg-white text-teal-600 border-b-2 border-teal-600' : 'text-slate-500 hover:bg-slate-100'}`}
+                  >
+                    <LinkIcon size={14} className="inline mr-1 mb-0.5" /> Permanent Link
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('temporary')}
+                    className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide ${activeTab === 'temporary' ? 'bg-white text-amber-600 border-b-2 border-amber-600' : 'text-slate-500 hover:bg-slate-100'}`}
+                  >
+                    <Clock size={14} className="inline mr-1 mb-0.5" /> 1-Hour Token
+                  </button>
               </div>
 
-              <div className="flex space-x-2">
-                <input 
-                    type="password"
-                    value={accessToken}
-                    onChange={handleTokenChange}
-                    placeholder="Paste Access Token (starts with ya29...)"
-                    className="flex-grow text-sm p-2 border border-slate-300 rounded focus:ring-2 focus:ring-teal-500 outline-none"
-                />
-                {accessToken && (
-                    <button onClick={clearToken} className="px-3 py-2 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors" title="Clear Token">
-                        <Trash2 size={16} />
-                    </button>
-                )}
-              </div>
-              {accessToken && <p className="text-[10px] text-green-600 mt-1 font-medium">Token saved in browser storage.</p>}
+              {activeTab === 'permanent' ? (
+                 <div className="p-4 bg-white">
+                    <p className="text-xs text-slate-600 mb-3">
+                        <strong>Recommended:</strong> This method works forever (no 1-hour expiry). Ideal for student submissions.
+                    </p>
+                    <div className="bg-slate-100 p-3 rounded border border-slate-200 text-[10px] space-y-2 mb-3">
+                        <p>1. Go to <a href="https://script.google.com" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">script.google.com</a> & click "New Project"</p>
+                        <p>2. Paste this code into the editor (replace everything):</p>
+                        <div className="relative group">
+                            <pre className="bg-slate-800 text-slate-100 p-2 rounded overflow-x-auto font-mono text-[9px] h-24">{GAS_CODE}</pre>
+                            <button 
+                                onClick={() => navigator.clipboard.writeText(GAS_CODE)}
+                                className="absolute top-1 right-1 bg-white/10 hover:bg-white/20 text-white p-1 rounded"
+                                title="Copy Code"
+                            >
+                                <Copy size={12} />
+                            </button>
+                        </div>
+                        <p>3. Click <strong>Deploy</strong> &rarr; <strong>New Deployment</strong>.</p>
+                        <p>4. Select type: <strong>Web App</strong>.</p>
+                        <p>5. Configuration (Crucial!):</p>
+                        <ul className="list-disc pl-4 text-slate-700">
+                            <li>Execute as: <strong>Me</strong></li>
+                            <li>Who has access: <strong>Anyone</strong></li>
+                        </ul>
+                        <p>6. Click Deploy, Copy the <strong>Web App URL</strong>, and paste it below:</p>
+                    </div>
+                    <div className="flex space-x-2">
+                        <input 
+                            type="text"
+                            value={scriptUrl}
+                            onChange={handleScriptUrlChange}
+                            placeholder="Paste Web App URL (https://script.google.com/...)"
+                            className="flex-grow text-sm p-2 border border-slate-300 rounded focus:ring-2 focus:ring-teal-500 outline-none"
+                        />
+                        {scriptUrl && (
+                            <button onClick={clearScriptUrl} className="px-3 py-2 bg-red-100 text-red-600 rounded hover:bg-red-200" title="Clear URL">
+                                <Trash2 size={16} />
+                            </button>
+                        )}
+                    </div>
+                 </div>
+              ) : (
+                 <div className="p-4 bg-white">
+                    <p className="text-xs text-slate-600 mb-3">
+                        <strong>Warning:</strong> Access Tokens expire after 1 hour. Good for testing, bad for homework.
+                    </p>
+                    <div className="bg-slate-100 p-3 rounded border border-slate-200 mb-3">
+                        <p className="text-[10px] text-slate-500 mb-1">1. In <a href="https://developers.google.com/oauthplayground" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">OAuth Playground</a>, use Scope:</p>
+                        <div className="flex items-center bg-white p-1 rounded border border-slate-200">
+                            <code className="text-[10px] text-slate-700 font-mono select-all">{REQUIRED_SCOPE}</code>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-2">2. Click "Authorize APIs" &rarr; "Exchange authorization code"</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">3. Copy "Access token" (starts with ya29...) and paste below:</p>
+                    </div>
+                    <div className="flex space-x-2">
+                        <input 
+                            type="password"
+                            value={accessToken}
+                            onChange={handleTokenChange}
+                            placeholder="Paste Access Token..."
+                            className="flex-grow text-sm p-2 border border-slate-300 rounded focus:ring-2 focus:ring-teal-500 outline-none"
+                        />
+                        {accessToken && (
+                            <button onClick={clearToken} className="px-3 py-2 bg-red-100 text-red-600 rounded hover:bg-red-200" title="Clear Token">
+                                <Trash2 size={16} />
+                            </button>
+                        )}
+                    </div>
+                 </div>
+              )}
           </div>
       )}
 
@@ -405,8 +504,8 @@ export const SubmissionForm: React.FC = () => {
             </>
           ) : (
             <>
-              {accessToken ? <Upload size={20} /> : <Download size={20} />}
-              <span>{accessToken ? 'Submit Assignment' : 'Process & Download for Upload'}</span>
+              {(scriptUrl || accessToken) ? <Upload size={20} /> : <Download size={20} />}
+              <span>{(scriptUrl || accessToken) ? 'Submit Assignment' : 'Process & Download for Upload'}</span>
             </>
           )}
         </button>
