@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { SubmissionForm } from './components/SubmissionForm';
-import { Sparkles, GraduationCap } from 'lucide-react';
+import { GraduationCap } from 'lucide-react';
 
 function App() {
   return (
@@ -17,10 +17,6 @@ function App() {
               <h1 className="text-xl font-bold text-gray-900">EduSubmit Portal</h1>
               <p className="text-xs text-gray-500">Wellness & Beauty Care • Grade 8</p>
             </div>
-          </div>
-          <div className="hidden sm:flex items-center space-x-2 text-sm text-gray-500 bg-gray-50 px-3 py-1 rounded-full border border-gray-200">
-             <Sparkles size={14} className="text-amber-500" />
-             <span>AI-Enhanced Verification</span>
           </div>
         </div>
       </header>

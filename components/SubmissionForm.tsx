@@ -2,7 +2,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, FileVideo, CheckCircle, Loader2, AlertCircle, PlayCircle, X, Download, Settings, ExternalLink, Copy, Trash2 } from 'lucide-react';
 import { AssignmentType, StudentSubmission, UploadStatus } from '../types';
-import { analyzeSubmission } from '../services/gemini';
 import { uploadFileToDrive, downloadRenamedFile } from '../services/drive';
 
 const GOOGLE_DRIVE_FOLDER_ID = "1DF2vqZrluAWcj7upY-FD7W1P23TlfUuI";
@@ -101,28 +100,12 @@ export const SubmissionForm: React.FC = () => {
 
     const renamedFile = generateRenamedFilename();
     
-    // Step 1: AI Analysis
-    setStatus({ state: 'analyzing', message: 'Verifying assignment content with AI Teacher...' });
-    
-    let feedback = "";
-    try {
-        feedback = await analyzeSubmission(
-            formData.file, 
-            formData.assignmentType, 
-            `${formData.firstName} ${formData.lastName}`
-        );
-    } catch (err) {
-        console.error("Analysis failed", err);
-        feedback = "AI Analysis unavailable.";
-    }
-
-    // Step 2: Upload or Download
+    // Step 1: Upload or Download (Skipping AI Analysis)
     setStatus({ 
       state: 'uploading', 
       message: accessToken 
         ? `Uploading "${renamedFile}" to Drive...` 
-        : `Preparing "${renamedFile}" for submission...`,
-      aiFeedback: feedback
+        : `Preparing "${renamedFile}" for submission...`
     });
 
     try {
@@ -132,18 +115,16 @@ export const SubmissionForm: React.FC = () => {
             setStatus({
                 state: 'success',
                 message: 'Submission successful! File uploaded to Drive.',
-                renamedFileName: renamedFile,
-                aiFeedback: feedback
+                renamedFileName: renamedFile
             });
         } else {
             // Fallback: Simulate processing time then Trigger Download
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            await new Promise(resolve => setTimeout(resolve, 800)); // Reduced delay
             downloadRenamedFile(formData.file, renamedFile);
             setStatus({
                 state: 'success',
                 message: 'File renamed and downloaded.',
-                renamedFileName: renamedFile,
-                aiFeedback: feedback
+                renamedFileName: renamedFile
             });
         }
     } catch (error: any) {
@@ -161,8 +142,7 @@ export const SubmissionForm: React.FC = () => {
            setStatus({
                state: 'success',
                message: `Auto-upload failed (${error.message}). File downloaded instead.`,
-               renamedFileName: renamedFile,
-               aiFeedback: feedback
+               renamedFileName: renamedFile
            });
         }
     }
@@ -218,13 +198,6 @@ export const SubmissionForm: React.FC = () => {
                  <span className="text-sm font-mono text-gray-600 bg-gray-200 px-1 rounded">{GOOGLE_DRIVE_FOLDER_ID}</span>
               </div>
             </div>
-
-            {status.aiFeedback && (
-              <div className="pt-2 border-t border-gray-200 mt-2">
-                <p className="text-xs font-semibold text-purple-600 uppercase tracking-wider mb-1">Teacher AI Feedback</p>
-                <p className="text-sm text-gray-700 italic">"{status.aiFeedback}"</p>
-              </div>
-            )}
           </div>
 
           <button 
@@ -361,7 +334,7 @@ export const SubmissionForm: React.FC = () => {
                 <Upload size={20} />
               </div>
               <p className="text-gray-900 font-medium">Click to upload video</p>
-              <p className="text-gray-500 text-sm mt-1">MP4, WebM (Max 50MB for AI Review)</p>
+              <p className="text-gray-500 text-sm mt-1">MP4, WebM</p>
             </div>
           ) : (
             <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
@@ -413,13 +386,6 @@ export const SubmissionForm: React.FC = () => {
           </div>
         )}
 
-        {status.state === 'analyzing' && (
-           <div className="p-4 bg-purple-50 text-purple-700 rounded-lg flex items-center text-sm animate-pulse">
-             <Loader2 size={16} className="mr-2 animate-spin" />
-             {status.message}
-           </div>
-        )}
-
         {status.state === 'uploading' && (
            <div className="p-4 bg-blue-50 text-blue-700 rounded-lg flex items-center text-sm animate-pulse">
              <Loader2 size={16} className="mr-2 animate-spin" />
@@ -429,10 +395,10 @@ export const SubmissionForm: React.FC = () => {
 
         <button
           type="submit"
-          disabled={status.state === 'analyzing' || status.state === 'uploading'}
+          disabled={status.state === 'uploading'}
           className="w-full bg-slate-900 text-white font-semibold py-3 rounded-xl shadow-lg hover:bg-slate-800 focus:ring-4 focus:ring-slate-200 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
         >
-          {status.state === 'analyzing' || status.state === 'uploading' ? (
+          {status.state === 'uploading' ? (
             <>
               <Loader2 className="animate-spin" size={20} />
               <span>Processing...</span>

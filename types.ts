@@ -1,3 +1,4 @@
+
 export enum AssignmentType {
   NAIL_CARE = 'Nail Care',
   ACUPRESSURE = 'Acupressure Massage'
@@ -15,5 +16,4 @@ export interface UploadStatus {
   state: 'idle' | 'analyzing' | 'uploading' | 'success' | 'error';
   message: string;
   renamedFileName?: string;
-  aiFeedback?: string;
 }
