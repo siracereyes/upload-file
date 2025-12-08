@@ -1,11 +1,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, FileVideo, CheckCircle, Loader2, AlertCircle, PlayCircle, X, Download, Settings, ExternalLink, Copy, Trash2, Link as LinkIcon, Clock } from 'lucide-react';
+import { Upload, FileVideo, CheckCircle, Loader2, AlertCircle, PlayCircle, X, Download, Settings, Trash2, Copy, Link as LinkIcon } from 'lucide-react';
 import { AssignmentType, StudentSubmission, UploadStatus } from '../types';
-import { uploadFileToDrive, uploadFileToScript, downloadRenamedFile } from '../services/drive';
+import { uploadFileToScript, downloadRenamedFile } from '../services/drive';
 
-const GOOGLE_DRIVE_FOLDER_ID = "1DF2vqZrluAWcj7upY-FD7W1P23TlfUuI";
-const REQUIRED_SCOPE = "https://www.googleapis.com/auth/drive.file";
 // Embedded default script URL provided by user
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx4hkTeCOkBhfCDksFY4TOjQtoC5gwqNfp66uk4wTnSyadsl6_pbBkFWyp_coQBebuQ/exec";
 
@@ -20,11 +18,8 @@ export const SubmissionForm: React.FC = () => {
 
   // Settings State
   // Initialize with the default embedded URL
-  const [accessToken, setAccessToken] = useState<string>("");
   const [scriptUrl, setScriptUrl] = useState<string>(DEFAULT_SCRIPT_URL);
   const [showSettings, setShowSettings] = useState(false);
-  // Default to permanent tab since we have a valid URL
-  const [activeTab, setActiveTab] = useState<'permanent' | 'temporary'>('permanent');
 
   const [status, setStatus] = useState<UploadStatus>({
     state: 'idle',
@@ -36,32 +31,16 @@ export const SubmissionForm: React.FC = () => {
 
   // Load configs from local storage (allow overrides if user changed it)
   useEffect(() => {
-    const savedToken = localStorage.getItem('google_drive_token');
-    if (savedToken) setAccessToken(savedToken);
-
     const savedScriptUrl = localStorage.getItem('google_script_url');
     if (savedScriptUrl) {
         setScriptUrl(savedScriptUrl);
     } 
-    // If no saved script URL, we keep the DEFAULT_SCRIPT_URL initialized in state.
   }, []);
-
-  const handleTokenChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawValue = e.target.value;
-    const cleanToken = rawValue.trim().replace(/^["']|["']$/g, '');
-    setAccessToken(cleanToken);
-    localStorage.setItem('google_drive_token', cleanToken);
-  };
 
   const handleScriptUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value.trim();
     setScriptUrl(val);
     localStorage.setItem('google_script_url', val);
-  };
-
-  const clearToken = () => {
-    setAccessToken('');
-    localStorage.removeItem('google_drive_token');
   };
 
   const clearScriptUrl = () => {
@@ -116,8 +95,7 @@ export const SubmissionForm: React.FC = () => {
     }
 
     const renamedFile = generateRenamedFilename();
-    // Prioritize Script URL if available (default), otherwise Token
-    const canUpload = !!(scriptUrl || accessToken);
+    const canUpload = !!scriptUrl;
     
     setStatus({ 
       state: 'uploading', 
@@ -128,23 +106,14 @@ export const SubmissionForm: React.FC = () => {
 
     try {
         if (scriptUrl) {
-            // Mode A: Permanent Script
             await uploadFileToScript(formData.file, renamedFile, scriptUrl);
             setStatus({
                 state: 'success',
                 message: 'Submission successful! File uploaded via Secure Link.',
                 renamedFileName: renamedFile
             });
-        } else if (accessToken) {
-            // Mode B: Temporary Token
-            await uploadFileToDrive(formData.file, renamedFile, GOOGLE_DRIVE_FOLDER_ID, accessToken);
-            setStatus({
-                state: 'success',
-                message: 'Submission successful! File uploaded to Drive.',
-                renamedFileName: renamedFile
-            });
         } else {
-            // Fallback: Download
+            // Fallback: Download if no script url (shouldn't happen with default)
             await new Promise(resolve => setTimeout(resolve, 800));
             downloadRenamedFile(formData.file, renamedFile);
             setStatus({
@@ -160,10 +129,7 @@ export const SubmissionForm: React.FC = () => {
         downloadRenamedFile(formData.file, renamedFile);
         
         let userMessage = `Auto-upload failed. File downloaded for manual submission.`;
-        if (error.message.includes('401') || error.message.includes('403') || error.message.includes('invalid authentication')) {
-           userMessage = 'Authentication expired. File downloaded for manual upload.';
-        }
-
+        
         setStatus({
             state: 'success', 
             message: userMessage,
@@ -186,8 +152,8 @@ export const SubmissionForm: React.FC = () => {
 
   // The Google Apps Script code to display to the user (optional now, since it's embedded)
   const GAS_CODE = `function doPost(e) {
-  // 1. Set your Folder ID here
-  var folderId = "${GOOGLE_DRIVE_FOLDER_ID}";
+  // Set your Folder ID inside the script
+  var folderId = "YOUR_FOLDER_ID_HERE";
   
   try {
     var folder = DriveApp.getFolderById(folderId);
@@ -240,13 +206,6 @@ export const SubmissionForm: React.FC = () => {
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Renamed File</p>
               <p className="text-sm text-gray-700 font-bold mt-1 break-all">{status.renamedFileName}</p>
             </div>
-            
-             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Destination Folder ID</p>
-              <div className="flex items-center justify-between mt-1">
-                 <span className="text-sm font-mono text-gray-600 bg-gray-200 px-1 rounded">{GOOGLE_DRIVE_FOLDER_ID}</span>
-              </div>
-            </div>
           </div>
 
           <button 
@@ -260,7 +219,7 @@ export const SubmissionForm: React.FC = () => {
     );
   }
 
-  const hasConfig = !!(scriptUrl || accessToken);
+  const hasConfig = !!scriptUrl;
 
   return (
     <div className="bg-white rounded-2xl shadow-xl overflow-hidden max-w-2xl w-full mx-auto relative">
@@ -284,91 +243,44 @@ export const SubmissionForm: React.FC = () => {
           <div className="bg-slate-50 border-b border-slate-200 animate-in slide-in-from-top-2">
               <div className="flex border-b border-slate-200">
                   <button 
-                    onClick={() => setActiveTab('permanent')}
-                    className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide ${activeTab === 'permanent' ? 'bg-white text-teal-600 border-b-2 border-teal-600' : 'text-slate-500 hover:bg-slate-100'}`}
+                    className="flex-1 py-3 text-xs font-bold uppercase tracking-wide bg-white text-teal-600 border-b-2 border-teal-600"
                   >
-                    <LinkIcon size={14} className="inline mr-1 mb-0.5" /> Permanent Link
-                  </button>
-                  <button 
-                    onClick={() => setActiveTab('temporary')}
-                    className={`flex-1 py-3 text-xs font-bold uppercase tracking-wide ${activeTab === 'temporary' ? 'bg-white text-amber-600 border-b-2 border-amber-600' : 'text-slate-500 hover:bg-slate-100'}`}
-                  >
-                    <Clock size={14} className="inline mr-1 mb-0.5" /> 1-Hour Token
+                    <LinkIcon size={14} className="inline mr-1 mb-0.5" /> Backend Configuration
                   </button>
               </div>
 
-              {activeTab === 'permanent' ? (
-                 <div className="p-4 bg-white">
-                    <p className="text-xs text-slate-600 mb-3">
-                        <strong>Status:</strong> {scriptUrl === DEFAULT_SCRIPT_URL ? <span className="text-green-600 font-bold">System Default Link Active</span> : "Custom Link Active"}
-                    </p>
-                    
-                    {scriptUrl !== DEFAULT_SCRIPT_URL && (
-                       <div className="bg-amber-50 p-2 mb-3 rounded border border-amber-200 text-xs text-amber-800 flex justify-between items-center">
-                           <span>You are using a custom script URL.</span>
-                           <button onClick={restoreDefaultScript} className="text-amber-700 underline font-semibold">Restore Default</button>
-                       </div>
+             <div className="p-4 bg-white">
+                <p className="text-xs text-slate-600 mb-3">
+                    <strong>Status:</strong> {scriptUrl === DEFAULT_SCRIPT_URL ? <span className="text-green-600 font-bold">System Default Link Active</span> : "Custom Link Active"}
+                </p>
+                
+                {scriptUrl !== DEFAULT_SCRIPT_URL && (
+                    <div className="bg-amber-50 p-2 mb-3 rounded border border-amber-200 text-xs text-amber-800 flex justify-between items-center">
+                        <span>You are using a custom script URL.</span>
+                        <button onClick={restoreDefaultScript} className="text-amber-700 underline font-semibold">Restore Default</button>
+                    </div>
+                )}
+                
+                <div className="bg-slate-100 p-3 rounded border border-slate-200 text-[10px] space-y-2 mb-3">
+                    <p className="font-semibold text-slate-700">Backend Connection:</p>
+                    <p>This system uses a secure Google Apps Script to handle file uploads safely.</p>
+                </div>
+                
+                <div className="flex space-x-2">
+                    <input 
+                        type="text"
+                        value={scriptUrl}
+                        onChange={handleScriptUrlChange}
+                        placeholder="Paste Web App URL (https://script.google.com/...)"
+                        className="flex-grow text-sm p-2 border border-slate-300 rounded focus:ring-2 focus:ring-teal-500 outline-none text-slate-500"
+                    />
+                    {scriptUrl && scriptUrl !== DEFAULT_SCRIPT_URL && (
+                        <button onClick={clearScriptUrl} className="px-3 py-2 bg-red-100 text-red-600 rounded hover:bg-red-200" title="Clear URL">
+                            <Trash2 size={16} />
+                        </button>
                     )}
-                    
-                    <div className="bg-slate-100 p-3 rounded border border-slate-200 text-[10px] space-y-2 mb-3">
-                        <p className="font-semibold text-slate-700">How this works:</p>
-                        <p>We use a secure Google Apps Script proxy to upload files without needing frequent login tokens.</p>
-                        <p>The code below is what runs on the backend to handle your file:</p>
-                        <div className="relative group mt-2">
-                            <pre className="bg-slate-800 text-slate-100 p-2 rounded overflow-x-auto font-mono text-[9px] h-20 opacity-75">{GAS_CODE}</pre>
-                            <button 
-                                onClick={() => navigator.clipboard.writeText(GAS_CODE)}
-                                className="absolute top-1 right-1 bg-white/10 hover:bg-white/20 text-white p-1 rounded"
-                                title="Copy Code"
-                            >
-                                <Copy size={12} />
-                            </button>
-                        </div>
-                    </div>
-                    <div className="flex space-x-2">
-                        <input 
-                            type="text"
-                            value={scriptUrl}
-                            onChange={handleScriptUrlChange}
-                            placeholder="Paste Web App URL (https://script.google.com/...)"
-                            className="flex-grow text-sm p-2 border border-slate-300 rounded focus:ring-2 focus:ring-teal-500 outline-none text-slate-500"
-                        />
-                        {scriptUrl && scriptUrl !== DEFAULT_SCRIPT_URL && (
-                            <button onClick={clearScriptUrl} className="px-3 py-2 bg-red-100 text-red-600 rounded hover:bg-red-200" title="Clear URL">
-                                <Trash2 size={16} />
-                            </button>
-                        )}
-                    </div>
-                 </div>
-              ) : (
-                 <div className="p-4 bg-white">
-                    <p className="text-xs text-slate-600 mb-3">
-                        <strong>Warning:</strong> Access Tokens expire after 1 hour. Good for testing, bad for homework.
-                    </p>
-                    <div className="bg-slate-100 p-3 rounded border border-slate-200 mb-3">
-                        <p className="text-[10px] text-slate-500 mb-1">1. In <a href="https://developers.google.com/oauthplayground" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">OAuth Playground</a>, use Scope:</p>
-                        <div className="flex items-center bg-white p-1 rounded border border-slate-200">
-                            <code className="text-[10px] text-slate-700 flex-grow font-mono truncate">{REQUIRED_SCOPE}</code>
-                        </div>
-                        <p className="text-[10px] text-slate-500 mt-1">2. Click "Authorize APIs" &rarr; "Exchange authorization code for tokens"</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">3. Copy "Access token" and paste below (ensure no quotes):</p>
-                    </div>
-                    <div className="flex space-x-2">
-                        <input 
-                            type="password"
-                            value={accessToken}
-                            onChange={handleTokenChange}
-                            placeholder="Paste Access Token..."
-                            className="flex-grow text-sm p-2 border border-slate-300 rounded focus:ring-2 focus:ring-teal-500 outline-none"
-                        />
-                        {accessToken && (
-                            <button onClick={clearToken} className="px-3 py-2 bg-red-100 text-red-600 rounded hover:bg-red-200" title="Clear Token">
-                                <Trash2 size={16} />
-                            </button>
-                        )}
-                    </div>
-                 </div>
-              )}
+                </div>
+             </div>
           </div>
       )}
 
@@ -512,8 +424,8 @@ export const SubmissionForm: React.FC = () => {
             </>
           ) : (
             <>
-              {(scriptUrl || accessToken) ? <Upload size={20} /> : <Download size={20} />}
-              <span>{(scriptUrl || accessToken) ? 'Submit Assignment' : 'Process & Download for Upload'}</span>
+              {scriptUrl ? <Upload size={20} /> : <Download size={20} />}
+              <span>{scriptUrl ? 'Submit Assignment' : 'Process & Download for Upload'}</span>
             </>
           )}
         </button>
