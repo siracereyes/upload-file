@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, FileVideo, CheckCircle, Loader2, AlertCircle, PlayCircle, X, Download, Settings, Trash2, Link as LinkIcon, HelpCircle } from 'lucide-react';
+import { Upload, FileVideo, CheckCircle, Loader2, AlertCircle, PlayCircle, X, Download, Settings, Trash2, Link as LinkIcon, HelpCircle, AlertTriangle } from 'lucide-react';
 import { AssignmentType, StudentSubmission, UploadStatus } from '../types';
 import { uploadFileToScript, downloadRenamedFile } from '../services/drive';
 
 // Embedded default script URL provided by user
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx4hkTeCOkBhfCDksFY4TOjQtoC5gwqNfp66uk4wTnSyadsl6_pbBkFWyp_coQBebuQ/exec";
-// 100MB Limit
+// User requested 100MB, though GAS often fails > 50MB. We allow it but warn.
 const MAX_FILE_SIZE_MB = 100;
+// Threshold where GAS uploads usually become unstable
+const WARNING_SIZE_MB = 45;
 
 export const SubmissionForm: React.FC = () => {
   const [formData, setFormData] = useState<StudentSubmission>({
@@ -41,11 +43,6 @@ export const SubmissionForm: React.FC = () => {
     const val = e.target.value.trim();
     setScriptUrl(val);
     localStorage.setItem('google_script_url', val);
-  };
-
-  const clearScriptUrl = () => {
-    setScriptUrl('');
-    localStorage.removeItem('google_script_url');
   };
 
   const restoreDefaultScript = () => {
@@ -140,11 +137,18 @@ export const SubmissionForm: React.FC = () => {
         
         let errorMsg = error.message || "Unknown error";
         let detailedMsg = `Auto-upload failed. File downloaded for manual submission.`;
+        
+        const isLargeFile = formData.file && (formData.file.size > 35 * 1024 * 1024); // > 35MB
 
-        // Detection for common permission error (CORS/Network failure usually means 403 Forbidden)
+        // Detection logic
         if (errorMsg.includes("Failed to fetch") || errorMsg.includes("NetworkError")) {
-             errorMsg = "Permission Error (Access Denied)";
-             detailedMsg = "Upload failed because the Google Script is not set to 'Anyone'. We downloaded the file so you can submit it manually.";
+             if (isLargeFile) {
+                 errorMsg = "Upload Failed: File Too Large";
+                 detailedMsg = "Your file exceeds the Google Apps Script payload limit (approx 50MB). The server dropped the connection. Please try a smaller video or compress it.";
+             } else {
+                 errorMsg = "Permission Error (Access Denied)";
+                 detailedMsg = "Upload failed. This usually happens if the Google Script permissions are not set to 'Anyone'. We downloaded the file so you can submit it manually.";
+             }
         }
         
         // Fallback
@@ -203,6 +207,8 @@ export const SubmissionForm: React.FC = () => {
   }
 
   const hasConfig = !!scriptUrl;
+  const fileSizeMB = formData.file ? formData.file.size / (1024 * 1024) : 0;
+  const isLargeFileWarning = fileSizeMB > WARNING_SIZE_MB;
 
   return (
     <div className="bg-white rounded-2xl shadow-xl overflow-hidden max-w-2xl w-full mx-auto relative">
@@ -234,15 +240,11 @@ export const SubmissionForm: React.FC = () => {
 
              <div className="p-4 bg-white space-y-4">
                 <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-xs text-amber-900">
-                    <p className="font-bold flex items-center mb-1"><HelpCircle size={14} className="mr-1"/> Troubleshooting: Upload Fails on Mobile/Other Devices?</p>
-                    <p className="mb-2">If uploads work for you but fail for students/others, you must change your Script Permissions:</p>
-                    <ol className="list-decimal ml-4 space-y-1 text-amber-800">
-                        <li>Go to your Google Apps Script editor.</li>
-                        <li>Click <strong>Deploy</strong> &rarr; <strong>Manage Deployments</strong>.</li>
-                        <li>Click the <strong>Pencil (Edit)</strong> icon.</li>
-                        <li>Set <strong>"Who has access"</strong> to <strong>"Anyone"</strong> (Required).</li>
-                        <li>Click <strong>Deploy</strong>.</li>
-                    </ol>
+                    <p className="font-bold flex items-center mb-1"><HelpCircle size={14} className="mr-1"/> Troubleshooting: Uploads Failing?</p>
+                    <ul className="list-disc ml-4 space-y-1 text-amber-800">
+                        <li><strong>File Size:</strong> Google Apps Script limits uploads to ~50MB. If your file is larger, it will likely fail.</li>
+                        <li><strong>Permissions:</strong> If smaller files fail, ensure your Script Deployment is set to "Anyone".</li>
+                    </ul>
                 </div>
 
                 <div className="flex space-x-2">
@@ -335,7 +337,7 @@ export const SubmissionForm: React.FC = () => {
               <p className="text-gray-500 text-sm mt-1">MP4, WebM (Max {MAX_FILE_SIZE_MB}MB)</p>
             </div>
           ) : (
-            <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+            <div className={`bg-gray-50 rounded-xl p-4 border ${isLargeFileWarning ? 'border-amber-300 bg-amber-50' : 'border-gray-200'}`}>
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center space-x-3 overflow-hidden">
                   <div className="bg-teal-100 p-2 rounded-lg text-teal-700 flex-shrink-0">
@@ -355,15 +357,22 @@ export const SubmissionForm: React.FC = () => {
                 </button>
               </div>
               
+              {isLargeFileWarning && (
+                <div className="flex items-start space-x-2 text-xs text-amber-800 bg-amber-100 p-2 rounded mb-3">
+                    <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                    <span>Warning: Large files ({fileSizeMB.toFixed(0)}MB) may fail to upload due to Google's server limits. If it fails, please compress the video.</span>
+                </div>
+              )}
+              
               {previewUrl && (
                 <div className="relative rounded-lg overflow-hidden bg-black aspect-video group mb-3">
                   <video src={previewUrl} controls className="w-full h-full object-contain" />
                 </div>
               )}
               
-              <div className="flex items-center text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-100">
-                <AlertCircle size={14} className="mr-2 flex-shrink-0" />
-                <span className="truncate">Rename: <strong>{generateRenamedFilename()}</strong></span>
+              <div className="flex items-center text-xs text-teal-700 bg-teal-50 p-2 rounded border border-teal-100">
+                <CheckCircle size={14} className="mr-2 flex-shrink-0" />
+                <span className="truncate">Will be saved as: <strong>{generateRenamedFilename()}</strong></span>
               </div>
             </div>
           )}
@@ -384,9 +393,12 @@ export const SubmissionForm: React.FC = () => {
                 <div className="space-y-2">
                     <p className="font-bold">{status.message.split('.')[0]}.</p>
                     <p>{status.message.split('.').slice(1).join('.')}</p>
-                    <p className="text-xs text-red-500 mt-2">
-                        * Please verify Google Script permissions are set to "Anyone" in the Settings (Gear Icon).
-                    </p>
+                    {/* Only show permission hint if it's NOT a size error */}
+                    {!status.message.includes("Too Large") && (
+                        <p className="text-xs text-red-500 mt-2">
+                            * Please verify Google Script permissions are set to "Anyone" in the Settings (Gear Icon).
+                        </p>
+                    )}
                 </div>
             </div>
           </div>
