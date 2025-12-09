@@ -4,14 +4,19 @@ import { AssignmentType, StudentSubmission, UploadStatus } from '../types';
 import { uploadFileToScript, downloadRenamedFile, testScriptConnection } from '../services/drive';
 
 // New default URL provided by user
-const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdgPUTiq6_kx_bbZhq7-Q1e_psl_J5-mUKWJ-_d7nztXPyP-Fs6bYTUZ3R0czT5Vqt/exec";
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz84cdpDO0qbG7dKxz_R4_z-_CqNVQYJ87xbp72Fy2h2rnDaucixL3ryWW5OhCvvwUz/exec";
 // User requested 50MB limit
 const MAX_FILE_SIZE_MB = 50;
 const WARNING_SIZE_MB = 25;
 
 const TROUBLESHOOTING_CODE = `function doPost(e) {
-  // CONFIG: Your Folder ID
+  // -----------------------------------------------------------
+  // CONFIGURATION: PASTE YOUR FOLDER ID BELOW
+  // 1. Go to your Google Drive Folder.
+  // 2. Copy the ID from the URL (folders/THIS_PART)
+  // 3. Paste it inside the quotes below.
   var FOLDER_ID = "1DF2vqZrluAWcj7upY-FD7W1P23TlfUuI"; 
+  // -----------------------------------------------------------
 
   try {
     var req = JSON.parse(e.postData.contents);
@@ -19,10 +24,14 @@ const TROUBLESHOOTING_CODE = `function doPost(e) {
     // --- ACTION: TEST CONNECTION ---
     if (req.action === "test") {
       // 1. Verify Folder Access
-      var folder = DriveApp.getFolderById(FOLDER_ID);
+      try {
+        var folder = DriveApp.getFolderById(FOLDER_ID);
+      } catch (fErr) {
+        throw new Error("Folder Error: Could not find Folder with ID '" + FOLDER_ID + "'. Please check the FOLDER_ID variable in Code.gs and ensure you have access.");
+      }
       
       // 2. Verify API Auth (Strict Check)
-      // This ensures the script has the scope to perform uploads
+      // This forces the script to check if it has external request permissions
       var testResp = UrlFetchApp.fetch("https://www.googleapis.com/drive/v3/about?fields=user", {
         headers: { "Authorization": "Bearer " + ScriptApp.getOAuthToken() },
         muteHttpExceptions: true
@@ -37,6 +46,13 @@ const TROUBLESHOOTING_CODE = `function doPost(e) {
     
     // --- ACTION: INITIALIZE UPLOAD ---
     if (req.action === "init") {
+      // Verify folder exists before starting
+      try {
+        DriveApp.getFolderById(FOLDER_ID);
+      } catch (e) {
+         throw new Error("Folder ID '" + FOLDER_ID + "' not found.");
+      }
+
       var url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable";
       var meta = { 
         name: req.filename, 
@@ -44,13 +60,12 @@ const TROUBLESHOOTING_CODE = `function doPost(e) {
         parents: [FOLDER_ID] 
       };
       
-      // Request a Resumable Upload URL from Google Drive
       var resp = UrlFetchApp.fetch(url, {
         method: "post",
         contentType: "application/json",
         payload: JSON.stringify(meta),
         headers: { "Authorization": "Bearer " + ScriptApp.getOAuthToken() },
-        muteHttpExceptions: true // Capture errors
+        muteHttpExceptions: true
       });
       
       if (resp.getResponseCode() >= 400) {
@@ -68,11 +83,9 @@ const TROUBLESHOOTING_CODE = `function doPost(e) {
     
     // --- ACTION: UPLOAD CHUNK ---
     if (req.action === "chunk") {
-      // Decode the chunk (limit 5MB chunks to avoid memory errors)
       var data = Utilities.base64Decode(req.base64);
       var blob = Utilities.newBlob(data);
       
-      // Forward the chunk to the Resumable URL
       var resp = UrlFetchApp.fetch(req.uploadUrl, {
         method: "put",
         payload: blob,
@@ -80,7 +93,6 @@ const TROUBLESHOOTING_CODE = `function doPost(e) {
         muteHttpExceptions: true
       });
       
-      // 308 = Resume Incomplete (Success for chunk), 200/201 = Success (Finished)
       var code = resp.getResponseCode();
       if (code === 308 || code === 200 || code === 201) {
         return ContentService.createTextOutput(JSON.stringify({ status: "success" }));
@@ -101,13 +113,9 @@ const TROUBLESHOOTING_CODE = `function doPost(e) {
 
 function doSetup() {
   // FORCE PERMISSIONS:
-  // 1. Create a dummy file to force Drive Scope
   var f = DriveApp.createFile("perm_check.txt", "test");
   f.setTrashed(true);
-  
-  // 2. Fetch external URL to force UrlFetch Scope
   UrlFetchApp.fetch("https://www.google.com");
-  
   console.log("Permissions Verified. You MUST now Deploy -> New Version.");
 }`;
 
@@ -276,9 +284,9 @@ export const SubmissionForm: React.FC = () => {
         if (errorMsg.includes("Failed to fetch") || errorMsg.includes("NetworkError")) {
              displayError = "Connection Error";
              detailedMsg = "Could not connect to Google Drive. Check internet or Script permissions.";
-        } else if (errorMsg.includes("Drive Init Failed") || errorMsg.includes("Auth Token Invalid") || errorMsg.includes("Exception") || errorMsg.includes("Permission")) {
-             displayError = "Script Permission Error";
-             detailedMsg = "Run 'doSetup' in Script Editor and Deploy as NEW version.";
+        } else if (errorMsg.includes("Drive Init Failed") || errorMsg.includes("Auth Token Invalid") || errorMsg.includes("Exception") || errorMsg.includes("Permission") || errorMsg.includes("Folder Error") || errorMsg.includes("Folder ID")) {
+             displayError = "Script Configuration Error";
+             detailedMsg = errorMsg; // Show the actual error (like Folder Not Found)
         }
         
         // Fallback
@@ -411,12 +419,13 @@ export const SubmissionForm: React.FC = () => {
                         Troubleshooting (Admins Only)
                      </h4>
                      <div className="bg-slate-50 rounded-lg p-3 text-xs text-slate-600 space-y-2">
-                         <p>If you see "Permission Error" or "Access Denied":</p>
+                         <p className="font-bold text-amber-700">Important: You must set the correct FOLDER_ID below.</p>
                          <ol className="list-decimal pl-4 space-y-1">
                              <li>Copy the code below.</li>
                              <li>Go to <a href="https://script.google.com" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">Google Apps Script</a>.</li>
                              <li>Paste the code into <strong>Code.gs</strong> (delete old code).</li>
-                             <li><strong>IMPORTANT:</strong> Select function <code>doSetup</code> and click <strong>Run</strong> to authorize permissions.</li>
+                             <li><strong>UPDATE THE FOLDER_ID</strong> variable in the code with your specific Drive Folder ID.</li>
+                             <li>Run <code>doSetup</code> to authorize permissions.</li>
                              <li>Click <strong>Deploy</strong> &rarr; <strong>Manage Deployments</strong>.</li>
                              <li>Click Edit (Pencil) &rarr; Version: <strong>New Version</strong> &rarr; Deploy.</li>
                          </ol>
