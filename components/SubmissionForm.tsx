@@ -8,8 +8,8 @@ import { uploadFileToScript, downloadRenamedFile } from '../services/drive';
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx4hkTeCOkBhfCDksFY4TOjQtoC5gwqNfp66uk4wTnSyadsl6_pbBkFWyp_coQBebuQ/exec";
 // User requested 100MB
 const MAX_FILE_SIZE_MB = 100;
-// Threshold where GAS uploads usually become unstable/slow
-const WARNING_SIZE_MB = 60;
+// Threshold where we warn user
+const WARNING_SIZE_MB = 45;
 
 export const SubmissionForm: React.FC = () => {
   const [formData, setFormData] = useState<StudentSubmission>({
@@ -157,13 +157,11 @@ export const SubmissionForm: React.FC = () => {
 
         // Detection logic
         if (errorMsg.includes("Failed to fetch") || errorMsg.includes("NetworkError")) {
-             if (isLargeFile) {
-                 errorMsg = "Upload Connection Failed";
-                 detailedMsg = "The file was too heavy for the connection. Please compress the video or try a stronger internet connection.";
-             } else {
-                 errorMsg = "Connection Error";
-                 detailedMsg = "Could not connect to Google Drive. Please check your internet or the Script permissions.";
-             }
+             errorMsg = "Connection Error";
+             detailedMsg = "Could not connect to Google Drive. Please check your internet or the Script permissions.";
+        } else if (errorMsg.includes("Init failed") || errorMsg.includes("Invalid action")) {
+             errorMsg = "Script Error";
+             detailedMsg = "Please update your Google Apps Script code to the new version (see Settings).";
         }
         
         // Fallback
@@ -256,13 +254,36 @@ export const SubmissionForm: React.FC = () => {
 
              <div className="p-4 bg-white space-y-4">
                 <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-xs text-amber-900">
-                    <p className="font-bold flex items-center mb-1"><HelpCircle size={14} className="mr-1"/> Troubleshooting: Large Files</p>
-                    <p>For 100MB support, you MUST update your Google Script code to support chunking.</p>
+                    <p className="font-bold flex items-center mb-1"><HelpCircle size={14} className="mr-1"/> Critical Update: New Script Code Required</p>
+                    <p>To support 100MB+ files without "newBlob" errors, you must update your Google Apps Script:</p>
+                    
+                    <div className="mt-2 bg-white p-2 rounded border border-amber-200 font-mono text-[10px] overflow-x-auto h-32 select-all">
+{`function doPost(e) {
+  var FOLDER_ID = "1DF2vqZrluAWcj7upY-FD7W1P23TlfUuI"; 
+  try {
+    var req = JSON.parse(e.postData.contents);
+    if (req.action === "init") {
+      var url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable";
+      var meta = { name: req.filename, mimeType: req.mimeType, parents: [FOLDER_ID] };
+      var token = ScriptApp.getOAuthToken();
+      var resp = UrlFetchApp.fetch(url, { method: "post", contentType: "application/json", payload: JSON.stringify(meta), headers: { "Authorization": "Bearer " + token } });
+      return ContentService.createTextOutput(JSON.stringify({ status: "success", url: resp.getAllHeaders()["Location"] }));
+    }
+    if (req.action === "chunk") {
+      var data = Utilities.base64Decode(req.base64);
+      var blob = Utilities.newBlob(data);
+      var resp = UrlFetchApp.fetch(req.uploadUrl, { method: "put", payload: blob, headers: { "Content-Range": req.range }, muteHttpExceptions: true });
+      return ContentService.createTextOutput(JSON.stringify({ status: "success" }));
+    }
+  } catch (err) { return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })); }
+}`}
+                    </div>
+                    
                     <ul className="list-disc ml-4 mt-2 space-y-1 text-amber-800">
-                        <li><strong>Step 1:</strong> Go to <a href="https://script.google.com" target="_blank" className="underline">script.google.com</a></li>
-                        <li><strong>Step 2:</strong> Add "Drive API" in Services.</li>
-                        <li><strong>Step 3:</strong> Paste the new chunk-compatible code (see instructions).</li>
-                        <li><strong>Step 4:</strong> Deploy as "Anyone".</li>
+                        <li><strong>Step 1:</strong> Copy the code above.</li>
+                        <li><strong>Step 2:</strong> Go to <a href="https://script.google.com" target="_blank" className="underline font-bold">script.google.com</a>, delete old code, and paste this.</li>
+                        <li><strong>Step 3:</strong> Ensure <strong>"Drive API"</strong> is added in Services (left sidebar).</li>
+                        <li><strong>Step 4:</strong> Deploy -> New Deployment -> "Web App" -> "Anyone".</li>
                     </ul>
                 </div>
 
@@ -379,7 +400,7 @@ export const SubmissionForm: React.FC = () => {
               {isLargeFileWarning && (
                 <div className="flex items-start space-x-2 text-xs text-amber-800 bg-amber-100 p-2 rounded mb-3">
                     <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-                    <span>Large files are processed in chunks. This may take a minute.</span>
+                    <span>Large files are uploaded in chunks. This may take a minute.</span>
                 </div>
               )}
               
@@ -415,7 +436,7 @@ export const SubmissionForm: React.FC = () => {
                     {/* Only show permission hint if it's NOT a size error */}
                     {!status.message.includes("Too Large") && (
                         <p className="text-xs text-red-500 mt-2">
-                            * Please ensure the Google Apps Script code is updated and deployed as "Anyone".
+                            * Please ensure you have updated the Google Apps Script code (Gear Icon).
                         </p>
                     )}
                 </div>
