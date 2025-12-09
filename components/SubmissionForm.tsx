@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, FileVideo, CheckCircle, Loader2, AlertCircle, PlayCircle, X, Download, Settings, Trash2, Link as LinkIcon, HelpCircle, AlertTriangle } from 'lucide-react';
 import { AssignmentType, StudentSubmission, UploadStatus } from '../types';
@@ -5,10 +6,10 @@ import { uploadFileToScript, downloadRenamedFile } from '../services/drive';
 
 // Embedded default script URL provided by user
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx4hkTeCOkBhfCDksFY4TOjQtoC5gwqNfp66uk4wTnSyadsl6_pbBkFWyp_coQBebuQ/exec";
-// User requested 100MB, though GAS often fails > 50MB. We allow it but warn.
+// User requested 100MB
 const MAX_FILE_SIZE_MB = 100;
-// Threshold where GAS uploads usually become unstable
-const WARNING_SIZE_MB = 45;
+// Threshold where GAS uploads usually become unstable/slow
+const WARNING_SIZE_MB = 60;
 
 export const SubmissionForm: React.FC = () => {
   const [formData, setFormData] = useState<StudentSubmission>({
@@ -23,10 +24,12 @@ export const SubmissionForm: React.FC = () => {
   const [scriptUrl, setScriptUrl] = useState<string>(DEFAULT_SCRIPT_URL);
   const [showSettings, setShowSettings] = useState(false);
 
+  // Status & Progress
   const [status, setStatus] = useState<UploadStatus>({
     state: 'idle',
     message: ''
   });
+  const [progress, setProgress] = useState(0);
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -78,6 +81,7 @@ export const SubmissionForm: React.FC = () => {
       setFormData(prev => ({ ...prev, file }));
       setPreviewUrl(URL.createObjectURL(file));
       setStatus({ state: 'idle', message: '' });
+      setProgress(0);
     }
   };
 
@@ -87,6 +91,7 @@ export const SubmissionForm: React.FC = () => {
     setPreviewUrl(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
     setStatus({ state: 'idle', message: '' });
+    setProgress(0);
   };
 
   const generateRenamedFilename = () => {
@@ -110,13 +115,23 @@ export const SubmissionForm: React.FC = () => {
     setStatus({ 
       state: 'uploading', 
       message: canUpload 
-        ? `Uploading "${renamedFile}"...` 
+        ? `Preparing upload...` 
         : `Preparing "${renamedFile}" for submission...`
     });
+    setProgress(0);
 
     try {
         if (scriptUrl) {
-            await uploadFileToScript(formData.file, renamedFile, scriptUrl);
+            // Updated to pass the progress callback
+            await uploadFileToScript(formData.file, renamedFile, scriptUrl, (percent) => {
+                setProgress(percent);
+                setStatus(prev => ({ 
+                    ...prev, 
+                    state: 'uploading',
+                    message: `Uploading: ${percent}%` 
+                }));
+            });
+            
             setStatus({
                 state: 'success',
                 message: 'Submission successful! File uploaded.',
@@ -138,16 +153,16 @@ export const SubmissionForm: React.FC = () => {
         let errorMsg = error.message || "Unknown error";
         let detailedMsg = `Auto-upload failed. File downloaded for manual submission.`;
         
-        const isLargeFile = formData.file && (formData.file.size > 35 * 1024 * 1024); // > 35MB
+        const isLargeFile = formData.file && (formData.file.size > 45 * 1024 * 1024); 
 
         // Detection logic
         if (errorMsg.includes("Failed to fetch") || errorMsg.includes("NetworkError")) {
              if (isLargeFile) {
-                 errorMsg = "Upload Failed: File Too Large";
-                 detailedMsg = "Your file exceeds the Google Apps Script payload limit (approx 50MB). The server dropped the connection. Please try a smaller video or compress it.";
+                 errorMsg = "Upload Connection Failed";
+                 detailedMsg = "The file was too heavy for the connection. Please compress the video or try a stronger internet connection.";
              } else {
-                 errorMsg = "Permission Error (Access Denied)";
-                 detailedMsg = "Upload failed. This usually happens if the Google Script permissions are not set to 'Anyone'. We downloaded the file so you can submit it manually.";
+                 errorMsg = "Connection Error";
+                 detailedMsg = "Could not connect to Google Drive. Please check your internet or the Script permissions.";
              }
         }
         
@@ -172,6 +187,7 @@ export const SubmissionForm: React.FC = () => {
     });
     clearFile();
     setStatus({ state: 'idle', message: '' });
+    setProgress(0);
   };
 
   if (status.state === 'success') {
@@ -240,10 +256,13 @@ export const SubmissionForm: React.FC = () => {
 
              <div className="p-4 bg-white space-y-4">
                 <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-xs text-amber-900">
-                    <p className="font-bold flex items-center mb-1"><HelpCircle size={14} className="mr-1"/> Troubleshooting: Uploads Failing?</p>
-                    <ul className="list-disc ml-4 space-y-1 text-amber-800">
-                        <li><strong>File Size:</strong> Google Apps Script limits uploads to ~50MB. If your file is larger, it will likely fail.</li>
-                        <li><strong>Permissions:</strong> If smaller files fail, ensure your Script Deployment is set to "Anyone".</li>
+                    <p className="font-bold flex items-center mb-1"><HelpCircle size={14} className="mr-1"/> Troubleshooting: Large Files</p>
+                    <p>For 100MB support, you MUST update your Google Script code to support chunking.</p>
+                    <ul className="list-disc ml-4 mt-2 space-y-1 text-amber-800">
+                        <li><strong>Step 1:</strong> Go to <a href="https://script.google.com" target="_blank" className="underline">script.google.com</a></li>
+                        <li><strong>Step 2:</strong> Add "Drive API" in Services.</li>
+                        <li><strong>Step 3:</strong> Paste the new chunk-compatible code (see instructions).</li>
+                        <li><strong>Step 4:</strong> Deploy as "Anyone".</li>
                     </ul>
                 </div>
 
@@ -360,7 +379,7 @@ export const SubmissionForm: React.FC = () => {
               {isLargeFileWarning && (
                 <div className="flex items-start space-x-2 text-xs text-amber-800 bg-amber-100 p-2 rounded mb-3">
                     <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-                    <span>Warning: Large files ({fileSizeMB.toFixed(0)}MB) may fail to upload due to Google's server limits. If it fails, please compress the video.</span>
+                    <span>Large files are processed in chunks. This may take a minute.</span>
                 </div>
               )}
               
@@ -396,7 +415,7 @@ export const SubmissionForm: React.FC = () => {
                     {/* Only show permission hint if it's NOT a size error */}
                     {!status.message.includes("Too Large") && (
                         <p className="text-xs text-red-500 mt-2">
-                            * Please verify Google Script permissions are set to "Anyone" in the Settings (Gear Icon).
+                            * Please ensure the Google Apps Script code is updated and deployed as "Anyone".
                         </p>
                     )}
                 </div>
@@ -405,9 +424,17 @@ export const SubmissionForm: React.FC = () => {
         )}
 
         {status.state === 'uploading' && (
-           <div className="p-4 bg-blue-50 text-blue-700 rounded-lg flex items-center text-sm animate-pulse">
-             <Loader2 size={16} className="mr-2 animate-spin" />
-             {status.message}
+           <div className="space-y-2">
+              <div className="p-4 bg-blue-50 text-blue-700 rounded-lg flex items-center justify-between text-sm animate-pulse">
+                <div className="flex items-center">
+                    <Loader2 size={16} className="mr-2 animate-spin" />
+                    <span>{status.message}</span>
+                </div>
+                <span className="font-bold">{progress}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div className="bg-teal-600 h-2.5 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
+              </div>
            </div>
         )}
 
