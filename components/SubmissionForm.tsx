@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, FileVideo, CheckCircle, Loader2, AlertCircle, PlayCircle, X, Download, Settings, Trash2, Link as LinkIcon, HelpCircle } from 'lucide-react';
 import { AssignmentType, StudentSubmission, UploadStatus } from '../types';
@@ -6,8 +5,8 @@ import { uploadFileToScript, downloadRenamedFile } from '../services/drive';
 
 // Embedded default script URL provided by user
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx4hkTeCOkBhfCDksFY4TOjQtoC5gwqNfp66uk4wTnSyadsl6_pbBkFWyp_coQBebuQ/exec";
-// 25MB Limit to prevent mobile browser crashes and Script timeouts
-const MAX_FILE_SIZE_MB = 25;
+// 100MB Limit
+const MAX_FILE_SIZE_MB = 100;
 
 export const SubmissionForm: React.FC = () => {
   const [formData, setFormData] = useState<StudentSubmission>({
@@ -74,7 +73,7 @@ export const SubmissionForm: React.FC = () => {
       if (fileSizeMB > MAX_FILE_SIZE_MB) {
         setStatus({ 
             state: 'error', 
-            message: `File is too large (${fileSizeMB.toFixed(1)}MB). Limit is ${MAX_FILE_SIZE_MB}MB for mobile uploads.` 
+            message: `File is too large (${fileSizeMB.toFixed(1)}MB). Limit is ${MAX_FILE_SIZE_MB}MB.` 
         });
         return;
       }
