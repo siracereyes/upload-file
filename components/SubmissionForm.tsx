@@ -174,9 +174,9 @@ export const SubmissionForm: React.FC = () => {
         if (errorMsg.includes("Failed to fetch") || errorMsg.includes("NetworkError")) {
              errorMsg = "Connection Error";
              detailedMsg = "Could not connect to Google Drive. Check internet or Script permissions.";
-        } else if (errorMsg.includes("Init failed") || errorMsg.includes("Invalid action") || errorMsg.includes("pahintulot") || errorMsg.includes("Authorization")) {
+        } else if (errorMsg.includes("Init failed") || errorMsg.includes("Invalid action") || errorMsg.includes("pahintulot") || errorMsg.includes("Authorization") || errorMsg.includes("Permission Error")) {
              errorMsg = "Script Permission Error";
-             detailedMsg = "Run 'doSetup' in Script Editor and Deploy as NEW version.";
+             detailedMsg = "Deploy a NEW VERSION in Google Script Editor (Manage Deployments -> Edit -> New Version).";
         }
         
         // Fallback
@@ -210,7 +210,7 @@ export const SubmissionForm: React.FC = () => {
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center text-green-600">
             <CheckCircle size={32} />
           </div>
-          <h2 className="text-2xl font-bold text-gray-800">Submission Complete</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Submission Complete</h2>
           
           <div className="bg-green-50 border border-green-200 p-4 rounded-lg text-left text-sm text-green-800 w-full">
              <p className="font-semibold text-center">Video successfully uploaded!</p>
@@ -270,7 +270,7 @@ export const SubmissionForm: React.FC = () => {
              <div className="p-4 bg-white space-y-4">
                 <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-xs text-amber-900">
                     <p className="font-bold flex items-center mb-1"><HelpCircle size={14} className="mr-1"/> Fix "Permission" Errors</p>
-                    <p>If uploads fail, you must re-authorize the script. This is required for large file uploads.</p>
+                    <p>If Test Connection fails with "Permission Error", you must update the deployment version.</p>
                     
                     <div className="mt-2 bg-white p-2 rounded border border-amber-200 font-mono text-[10px] overflow-x-auto h-32 select-all">
 {`function doPost(e) {
@@ -300,15 +300,16 @@ export const SubmissionForm: React.FC = () => {
 function doSetup() {
   DriveApp.getRootFolder();
   UrlFetchApp.fetch("https://www.google.com");
-  console.log("Permissions granted!");
+  console.log("Permissions granted! Now DEPLOY as 'New Deployment'.");
 }`}
                     </div>
                     
                     <ul className="list-disc ml-4 mt-2 space-y-1 text-amber-800">
-                        <li><strong>Step 1:</strong> Paste code into script.google.com & save.</li>
-                        <li><strong>Step 2:</strong> Select <code>doSetup</code> function & click <strong>"Run"</strong>.</li>
-                        <li><strong>Step 3:</strong> Click <strong>"Review Permissions"</strong> &rarr; <strong>"Allow"</strong>.</li>
-                        <li><strong>Step 4:</strong> Deploy &rarr; <strong>New Deployment</strong> (NOT Manage) &rarr; "Anyone".</li>
+                        <li><strong>Step 1:</strong> Save code & Run <code>doSetup</code> function (Review Permissions).</li>
+                        <li><strong>Step 2:</strong> Click <strong>Deploy</strong> &rarr; <strong>Manage deployments</strong>.</li>
+                        <li><strong>Step 3:</strong> Click <strong>Edit</strong> (Pencil Icon).</li>
+                        <li><strong>Step 4:</strong> Version: Select <strong>"New version"</strong> (Required).</li>
+                        <li><strong>Step 5:</strong> Click <strong>Deploy</strong>.</li>
                     </ul>
                 </div>
 

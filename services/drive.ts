@@ -22,7 +22,20 @@ export const testScriptConnection = async (scriptUrl: string): Promise<boolean> 
         method: 'POST',
         body: JSON.stringify({ action: "test" })
     });
-    const json = await response.json();
+    
+    const text = await response.text();
+    // Detect HTML response which indicates GAS Permission Error
+    if (text.trim().startsWith("<!DOCTYPE html") || text.includes("Google Accounts")) {
+        throw new Error("Permission Error: Script not deployed with new permissions.");
+    }
+
+    let json;
+    try {
+        json = JSON.parse(text);
+    } catch {
+        throw new Error("Invalid response from script (Parse Error).");
+    }
+
     if (json.status !== 'success') {
         throw new Error(json.message || 'Script error');
     }
@@ -56,13 +69,20 @@ export const uploadFileToScript = async (
       })
   });
 
-  // Handle HTML error pages (e.g. from 404 or 403) that might come back as 200 OK from redirects
-  const contentType = initResponse.headers.get("content-type");
-  if (contentType && contentType.includes("text/html")) {
+  const initText = await initResponse.text();
+  
+  // Check for HTML/Permission errors in INIT phase
+  if (initText.trim().startsWith("<!DOCTYPE html") || initText.includes("Google Accounts")) {
       throw new Error("Script Permission Error: Received HTML instead of JSON. Ensure script is deployed to 'Anyone'.");
   }
 
-  const initJson = await initResponse.json();
+  let initJson;
+  try {
+      initJson = JSON.parse(initText);
+  } catch {
+      throw new Error("Failed to parse script response.");
+  }
+
   if (initJson.status !== 'success' || !initJson.url) {
       throw new Error(initJson.message || "Failed to initialize upload session");
   }
