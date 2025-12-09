@@ -159,9 +159,9 @@ export const SubmissionForm: React.FC = () => {
         if (errorMsg.includes("Failed to fetch") || errorMsg.includes("NetworkError")) {
              errorMsg = "Connection Error";
              detailedMsg = "Could not connect to Google Drive. Please check your internet or the Script permissions.";
-        } else if (errorMsg.includes("Init failed") || errorMsg.includes("Invalid action")) {
-             errorMsg = "Script Error";
-             detailedMsg = "Please update your Google Apps Script code to the new version (see Settings).";
+        } else if (errorMsg.includes("Init failed") || errorMsg.includes("Invalid action") || errorMsg.includes("pahintulot")) {
+             errorMsg = "Script Permission Error";
+             detailedMsg = "Please Run 'doSetup' in the Google Script editor to allow the new permissions (see Settings).";
         }
         
         // Fallback
@@ -254,8 +254,8 @@ export const SubmissionForm: React.FC = () => {
 
              <div className="p-4 bg-white space-y-4">
                 <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-xs text-amber-900">
-                    <p className="font-bold flex items-center mb-1"><HelpCircle size={14} className="mr-1"/> Critical Update: New Script Code Required</p>
-                    <p>To support 100MB+ files without "newBlob" errors, you must update your Google Apps Script:</p>
+                    <p className="font-bold flex items-center mb-1"><HelpCircle size={14} className="mr-1"/> Fix "Permission" Errors</p>
+                    <p>If you see "Wala kang pahintulot" or "Permission Denied", you must authorize the script.</p>
                     
                     <div className="mt-2 bg-white p-2 rounded border border-amber-200 font-mono text-[10px] overflow-x-auto h-32 select-all">
 {`function doPost(e) {
@@ -276,14 +276,22 @@ export const SubmissionForm: React.FC = () => {
       return ContentService.createTextOutput(JSON.stringify({ status: "success" }));
     }
   } catch (err) { return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() })); }
+}
+
+// !!! IMPORTANT: RUN THIS FUNCTION ONCE TO AUTHORIZE !!!
+function doSetup() {
+  DriveApp.getRootFolder();
+  UrlFetchApp.fetch("https://www.google.com");
+  console.log("Permissions granted!");
 }`}
                     </div>
                     
                     <ul className="list-disc ml-4 mt-2 space-y-1 text-amber-800">
-                        <li><strong>Step 1:</strong> Copy the code above.</li>
-                        <li><strong>Step 2:</strong> Go to <a href="https://script.google.com" target="_blank" className="underline font-bold">script.google.com</a>, delete old code, and paste this.</li>
-                        <li><strong>Step 3:</strong> Ensure <strong>"Drive API"</strong> is added in Services (left sidebar).</li>
-                        <li><strong>Step 4:</strong> Deploy &rarr; New Deployment &rarr; "Web App" &rarr; "Anyone".</li>
+                        <li><strong>Step 1:</strong> Paste the code above into script.google.com.</li>
+                        <li><strong>Step 2:</strong> Select <code>doSetup</code> from the function dropdown.</li>
+                        <li><strong>Step 3:</strong> Click <strong>"Run"</strong>. A popup will appear.</li>
+                        <li><strong>Step 4:</strong> Click <strong>"Review Permissions"</strong> &rarr; <strong>"Allow"</strong>.</li>
+                        <li><strong>Step 5:</strong> Deploy &rarr; New Deployment &rarr; "Web App" &rarr; "Anyone".</li>
                     </ul>
                 </div>
 
