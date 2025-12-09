@@ -3,7 +3,7 @@ import { Upload, FileVideo, CheckCircle, Loader2, AlertCircle, PlayCircle, X, Do
 import { AssignmentType, StudentSubmission, UploadStatus } from '../types';
 import { uploadFileToScript, downloadRenamedFile, testScriptConnection } from '../services/drive';
 
-// Embedded default script URL provided by user
+// New default URL provided by user
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdgPUTiq6_kx_bbZhq7-Q1e_psl_J5-mUKWJ-_d7nztXPyP-Fs6bYTUZ3R0czT5Vqt/exec";
 // User requested 50MB limit
 const MAX_FILE_SIZE_MB = 50;
@@ -18,9 +18,20 @@ const TROUBLESHOOTING_CODE = `function doPost(e) {
     
     // --- ACTION: TEST CONNECTION ---
     if (req.action === "test") {
-      // STRICT TEST: Verifies Drive AND Network Permissions
-      DriveApp.getFolderById(FOLDER_ID); 
-      UrlFetchApp.fetch("https://www.googleapis.com/discovery/v1/apis/drive/v3/rest");
+      // 1. Verify Folder Access
+      var folder = DriveApp.getFolderById(FOLDER_ID);
+      
+      // 2. Verify API Auth (Strict Check)
+      // This ensures the script has the scope to perform uploads
+      var testResp = UrlFetchApp.fetch("https://www.googleapis.com/drive/v3/about?fields=user", {
+        headers: { "Authorization": "Bearer " + ScriptApp.getOAuthToken() },
+        muteHttpExceptions: true
+      });
+      
+      if (testResp.getResponseCode() >= 400) {
+        throw new Error("Auth Token Invalid: " + testResp.getContentText());
+      }
+      
       return ContentService.createTextOutput(JSON.stringify({ status: "success" }));
     }
     
@@ -38,8 +49,16 @@ const TROUBLESHOOTING_CODE = `function doPost(e) {
         method: "post",
         contentType: "application/json",
         payload: JSON.stringify(meta),
-        headers: { "Authorization": "Bearer " + ScriptApp.getOAuthToken() }
+        headers: { "Authorization": "Bearer " + ScriptApp.getOAuthToken() },
+        muteHttpExceptions: true // Capture errors
       });
+      
+      if (resp.getResponseCode() >= 400) {
+         return ContentService.createTextOutput(JSON.stringify({ 
+           status: "error", 
+           message: "Drive Init Failed: " + resp.getContentText() 
+         }));
+      }
       
       return ContentService.createTextOutput(JSON.stringify({ 
         status: "success", 
@@ -81,10 +100,15 @@ const TROUBLESHOOTING_CODE = `function doPost(e) {
 }
 
 function doSetup() {
-  // Run this once in the editor to authorize all scopes
-  DriveApp.getRootFolder();
+  // FORCE PERMISSIONS:
+  // 1. Create a dummy file to force Drive Scope
+  var f = DriveApp.createFile("perm_check.txt", "test");
+  f.setTrashed(true);
+  
+  // 2. Fetch external URL to force UrlFetch Scope
   UrlFetchApp.fetch("https://www.google.com");
-  console.log("Setup Complete. Now Deploy as New Version.");
+  
+  console.log("Permissions Verified. You MUST now Deploy -> New Version.");
 }`;
 
 export const SubmissionForm: React.FC = () => {
@@ -248,13 +272,13 @@ export const SubmissionForm: React.FC = () => {
         let displayError = errorMsg;
         let detailedMsg = `Auto-upload failed. File downloaded for manual submission.`;
         
-        // Detection logic
+        // Detailed Detection logic
         if (errorMsg.includes("Failed to fetch") || errorMsg.includes("NetworkError")) {
              displayError = "Connection Error";
              detailedMsg = "Could not connect to Google Drive. Check internet or Script permissions.";
-        } else if (errorMsg.includes("Init failed") || errorMsg.includes("Invalid action") || errorMsg.includes("pahintulot") || errorMsg.includes("Authorization") || errorMsg.includes("Permission Error") || errorMsg.includes("Exception") || errorMsg.includes("script.external_request")) {
+        } else if (errorMsg.includes("Drive Init Failed") || errorMsg.includes("Auth Token Invalid") || errorMsg.includes("Exception") || errorMsg.includes("Permission")) {
              displayError = "Script Permission Error";
-             detailedMsg = `Deploy a NEW VERSION in Google Script Editor (Manage Deployments -> Edit -> New Version).`;
+             detailedMsg = "Run 'doSetup' in Script Editor and Deploy as NEW version.";
         }
         
         // Fallback
@@ -399,7 +423,7 @@ export const SubmissionForm: React.FC = () => {
                          <div className="relative group">
                             <textarea 
                                 readOnly 
-                                className="w-full h-24 p-2 bg-slate-800 text-slate-300 font-mono text-[10px] rounded border border-slate-700 mt-2 focus:outline-none"
+                                className="w-full h-32 p-2 bg-slate-800 text-slate-300 font-mono text-[10px] rounded border border-slate-700 mt-2 focus:outline-none"
                                 value={TROUBLESHOOTING_CODE}
                             />
                             <button 
