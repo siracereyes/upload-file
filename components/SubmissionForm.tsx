@@ -283,7 +283,7 @@ export const SubmissionForm: React.FC = () => {
                         <li><strong>Step 1:</strong> Copy the code above.</li>
                         <li><strong>Step 2:</strong> Go to <a href="https://script.google.com" target="_blank" className="underline font-bold">script.google.com</a>, delete old code, and paste this.</li>
                         <li><strong>Step 3:</strong> Ensure <strong>"Drive API"</strong> is added in Services (left sidebar).</li>
-                        <li><strong>Step 4:</strong> Deploy -> New Deployment -> "Web App" -> "Anyone".</li>
+                        <li><strong>Step 4:</strong> Deploy &rarr; New Deployment &rarr; "Web App" &rarr; "Anyone".</li>
                     </ul>
                 </div>
 
