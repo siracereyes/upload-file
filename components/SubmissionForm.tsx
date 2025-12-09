@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, FileVideo, CheckCircle, Loader2, AlertCircle, PlayCircle, X, Download, Settings, Trash2, Link as LinkIcon, HelpCircle, AlertTriangle, Activity } from 'lucide-react';
 import { AssignmentType, StudentSubmission, UploadStatus } from '../types';
@@ -6,10 +5,10 @@ import { uploadFileToScript, downloadRenamedFile, testScriptConnection } from '.
 
 // Embedded default script URL provided by user
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdgPUTiq6_kx_bbZhq7-Q1e_psl_J5-mUKWJ-_d7nztXPyP-Fs6bYTUZ3R0czT5Vqt/exec";
-// User requested 100MB
-const MAX_FILE_SIZE_MB = 100;
+// User requested 50MB
+const MAX_FILE_SIZE_MB = 50;
 // Threshold where we warn user
-const WARNING_SIZE_MB = 45;
+const WARNING_SIZE_MB = 25;
 
 export const SubmissionForm: React.FC = () => {
   const [formData, setFormData] = useState<StudentSubmission>({
