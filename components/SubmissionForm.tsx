@@ -5,9 +5,9 @@ import { uploadFileToScript, downloadRenamedFile, testScriptConnection } from '.
 
 // New default URL provided by user
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz84cdpDO0qbG7dKxz_R4_z-_CqNVQYJ87xbp72Fy2h2rnDaucixL3ryWW5OhCvvwUz/exec";
-// User requested 50MB limit
-const MAX_FILE_SIZE_MB = 50;
-const WARNING_SIZE_MB = 25;
+// User requested 100MB limit
+const MAX_FILE_SIZE_MB = 100;
+const WARNING_SIZE_MB = 50;
 
 const TROUBLESHOOTING_CODE = `function doPost(e) {
   // -----------------------------------------------------------
