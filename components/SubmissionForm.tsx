@@ -5,7 +5,7 @@ import { AssignmentType, StudentSubmission, UploadStatus } from '../types';
 import { uploadFileToScript, downloadRenamedFile } from '../services/drive';
 
 // Embedded default script URL provided by user
-const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx4hkTeCOkBhfCDksFY4TOjQtoC5gwqNfp66uk4wTnSyadsl6_pbBkFWyp_coQBebuQ/exec";
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdgPUTiq6_kx_bbZhq7-Q1e_psl_J5-mUKWJ-_d7nztXPyP-Fs6bYTUZ3R0czT5Vqt/exec";
 // User requested 100MB
 const MAX_FILE_SIZE_MB = 100;
 // Threshold where we warn user
