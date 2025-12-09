@@ -1,8 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, FileVideo, CheckCircle, Loader2, AlertCircle, PlayCircle, X, Download, Settings, Trash2, Link as LinkIcon, HelpCircle, AlertTriangle } from 'lucide-react';
+import { Upload, FileVideo, CheckCircle, Loader2, AlertCircle, PlayCircle, X, Download, Settings, Trash2, Link as LinkIcon, HelpCircle, AlertTriangle, Activity } from 'lucide-react';
 import { AssignmentType, StudentSubmission, UploadStatus } from '../types';
-import { uploadFileToScript, downloadRenamedFile } from '../services/drive';
+import { uploadFileToScript, downloadRenamedFile, testScriptConnection } from '../services/drive';
 
 // Embedded default script URL provided by user
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzdgPUTiq6_kx_bbZhq7-Q1e_psl_J5-mUKWJ-_d7nztXPyP-Fs6bYTUZ3R0czT5Vqt/exec";
@@ -23,6 +23,8 @@ export const SubmissionForm: React.FC = () => {
   // Settings State
   const [scriptUrl, setScriptUrl] = useState<string>(DEFAULT_SCRIPT_URL);
   const [showSettings, setShowSettings] = useState(false);
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [testMessage, setTestMessage] = useState('');
 
   // Status & Progress
   const [status, setStatus] = useState<UploadStatus>({
@@ -46,11 +48,27 @@ export const SubmissionForm: React.FC = () => {
     const val = e.target.value.trim();
     setScriptUrl(val);
     localStorage.setItem('google_script_url', val);
+    setTestStatus('idle'); // Reset test status on change
   };
 
   const restoreDefaultScript = () => {
     setScriptUrl(DEFAULT_SCRIPT_URL);
     localStorage.removeItem('google_script_url'); // clear override
+    setTestStatus('idle');
+  };
+
+  const runConnectionTest = async () => {
+    if (!scriptUrl) return;
+    setTestStatus('testing');
+    setTestMessage('Pinging Google Script...');
+    try {
+        await testScriptConnection(scriptUrl);
+        setTestStatus('success');
+        setTestMessage('Connection Successful! Script is ready.');
+    } catch (err: any) {
+        setTestStatus('error');
+        setTestMessage(err.message || 'Connection failed.');
+    }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -153,15 +171,13 @@ export const SubmissionForm: React.FC = () => {
         let errorMsg = error.message || "Unknown error";
         let detailedMsg = `Auto-upload failed. File downloaded for manual submission.`;
         
-        const isLargeFile = formData.file && (formData.file.size > 45 * 1024 * 1024); 
-
         // Detection logic
         if (errorMsg.includes("Failed to fetch") || errorMsg.includes("NetworkError")) {
              errorMsg = "Connection Error";
-             detailedMsg = "Could not connect to Google Drive. Please check your internet or the Script permissions.";
-        } else if (errorMsg.includes("Init failed") || errorMsg.includes("Invalid action") || errorMsg.includes("pahintulot")) {
+             detailedMsg = "Could not connect to Google Drive. Check internet or Script permissions.";
+        } else if (errorMsg.includes("Init failed") || errorMsg.includes("Invalid action") || errorMsg.includes("pahintulot") || errorMsg.includes("Authorization")) {
              errorMsg = "Script Permission Error";
-             detailedMsg = "Please Run 'doSetup' in the Google Script editor to allow the new permissions (see Settings).";
+             detailedMsg = "Run 'doSetup' in Script Editor and Deploy as NEW version.";
         }
         
         // Fallback
@@ -255,13 +271,16 @@ export const SubmissionForm: React.FC = () => {
              <div className="p-4 bg-white space-y-4">
                 <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-xs text-amber-900">
                     <p className="font-bold flex items-center mb-1"><HelpCircle size={14} className="mr-1"/> Fix "Permission" Errors</p>
-                    <p>If you see "Wala kang pahintulot" or "Permission Denied", you must authorize the script.</p>
+                    <p>If uploads fail, you must re-authorize the script. This is required for large file uploads.</p>
                     
                     <div className="mt-2 bg-white p-2 rounded border border-amber-200 font-mono text-[10px] overflow-x-auto h-32 select-all">
 {`function doPost(e) {
   var FOLDER_ID = "1DF2vqZrluAWcj7upY-FD7W1P23TlfUuI"; 
   try {
     var req = JSON.parse(e.postData.contents);
+    if (req.action === "test") {
+       return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "Connected" }));
+    }
     if (req.action === "init") {
       var url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable";
       var meta = { name: req.filename, mimeType: req.mimeType, parents: [FOLDER_ID] };
@@ -287,27 +306,49 @@ function doSetup() {
                     </div>
                     
                     <ul className="list-disc ml-4 mt-2 space-y-1 text-amber-800">
-                        <li><strong>Step 1:</strong> Paste the code above into script.google.com.</li>
-                        <li><strong>Step 2:</strong> Select <code>doSetup</code> from the function dropdown.</li>
-                        <li><strong>Step 3:</strong> Click <strong>"Run"</strong>. A popup will appear.</li>
-                        <li><strong>Step 4:</strong> Click <strong>"Review Permissions"</strong> &rarr; <strong>"Allow"</strong>.</li>
-                        <li><strong>Step 5:</strong> Deploy &rarr; New Deployment &rarr; "Web App" &rarr; "Anyone".</li>
+                        <li><strong>Step 1:</strong> Paste code into script.google.com & save.</li>
+                        <li><strong>Step 2:</strong> Select <code>doSetup</code> function & click <strong>"Run"</strong>.</li>
+                        <li><strong>Step 3:</strong> Click <strong>"Review Permissions"</strong> &rarr; <strong>"Allow"</strong>.</li>
+                        <li><strong>Step 4:</strong> Deploy &rarr; <strong>New Deployment</strong> (NOT Manage) &rarr; "Anyone".</li>
                     </ul>
                 </div>
 
-                <div className="flex space-x-2">
-                    <input 
-                        type="text"
-                        value={scriptUrl}
-                        onChange={handleScriptUrlChange}
-                        placeholder="Paste Web App URL (https://script.google.com/...)"
-                        className="flex-grow text-sm p-2 border border-slate-300 rounded focus:ring-2 focus:ring-teal-500 outline-none text-slate-500"
-                    />
-                    {scriptUrl && scriptUrl !== DEFAULT_SCRIPT_URL && (
-                        <button onClick={restoreDefaultScript} className="px-3 py-2 bg-slate-100 text-slate-600 rounded hover:bg-slate-200 text-xs font-semibold whitespace-nowrap" title="Reset">
-                            Reset Default
+                <div className="flex flex-col space-y-2">
+                    <div className="flex space-x-2">
+                        <input 
+                            type="text"
+                            value={scriptUrl}
+                            onChange={handleScriptUrlChange}
+                            placeholder="Paste Web App URL (https://script.google.com/...)"
+                            className="flex-grow text-sm p-2 border border-slate-300 rounded focus:ring-2 focus:ring-teal-500 outline-none text-slate-500"
+                        />
+                        {scriptUrl && scriptUrl !== DEFAULT_SCRIPT_URL && (
+                            <button onClick={restoreDefaultScript} className="px-3 py-2 bg-slate-100 text-slate-600 rounded hover:bg-slate-200 text-xs font-semibold whitespace-nowrap" title="Reset">
+                                Reset Default
+                            </button>
+                        )}
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                        <button 
+                            onClick={runConnectionTest}
+                            disabled={testStatus === 'testing' || !scriptUrl}
+                            className={`flex items-center justify-center px-4 py-2 rounded text-xs font-bold uppercase tracking-wide transition-colors ${
+                                testStatus === 'success' ? 'bg-green-100 text-green-700' :
+                                testStatus === 'error' ? 'bg-red-100 text-red-700' :
+                                'bg-teal-600 text-white hover:bg-teal-700'
+                            }`}
+                        >
+                            {testStatus === 'testing' ? <Loader2 size={14} className="animate-spin mr-1"/> : <Activity size={14} className="mr-1"/>}
+                            {testStatus === 'testing' ? 'Testing...' : 'Test Connection'}
                         </button>
-                    )}
+                        
+                        {testMessage && (
+                            <span className={`text-xs ${testStatus === 'error' ? 'text-red-600 font-bold' : 'text-green-600'}`}>
+                                {testMessage}
+                            </span>
+                        )}
+                    </div>
                 </div>
              </div>
           </div>
@@ -444,7 +485,7 @@ function doSetup() {
                     {/* Only show permission hint if it's NOT a size error */}
                     {!status.message.includes("Too Large") && (
                         <p className="text-xs text-red-500 mt-2">
-                            * Please ensure you have updated the Google Apps Script code (Gear Icon).
+                            * Please Run <strong>Test Connection</strong> in settings to debug.
                         </p>
                     )}
                 </div>

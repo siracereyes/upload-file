@@ -17,6 +17,18 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
   });
 };
 
+export const testScriptConnection = async (scriptUrl: string): Promise<boolean> => {
+    const response = await fetch(scriptUrl, {
+        method: 'POST',
+        body: JSON.stringify({ action: "test" })
+    });
+    const json = await response.json();
+    if (json.status !== 'success') {
+        throw new Error(json.message || 'Script error');
+    }
+    return true;
+};
+
 /**
  * Uploads a file via a Google Apps Script Proxy to Google Drive Resumable Upload API.
  * This method is robust for large files (100MB+) as it streams chunks.
@@ -43,6 +55,12 @@ export const uploadFileToScript = async (
           mimeType: file.type
       })
   });
+
+  // Handle HTML error pages (e.g. from 404 or 403) that might come back as 200 OK from redirects
+  const contentType = initResponse.headers.get("content-type");
+  if (contentType && contentType.includes("text/html")) {
+      throw new Error("Script Permission Error: Received HTML instead of JSON. Ensure script is deployed to 'Anyone'.");
+  }
 
   const initJson = await initResponse.json();
   if (initJson.status !== 'success' || !initJson.url) {
@@ -80,7 +98,7 @@ export const uploadFileToScript = async (
         try {
             const response = await fetch(scriptUrl, {
                 method: 'POST',
-                mode: 'cors',
+                // Removed 'mode: cors' to allow simple POST (GAS handles CORS)
                 body: JSON.stringify(chunkPayload),
             });
 
